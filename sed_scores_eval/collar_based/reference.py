@@ -11,6 +11,7 @@ def fscore(
     import dcase_util
 
     assert isinstance(ground_truth, (str, Path)), type(ground_truth)
+    ground_truth = str(ground_truth)
     scores, *_ = parse_inputs(scores, ground_truth)
     tmp_fid = tempfile.NamedTemporaryFile(delete=False)
     tmp_filepath = Path(tmp_fid.name)

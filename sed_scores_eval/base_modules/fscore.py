@@ -2,64 +2,16 @@ import numpy as np
 from sed_scores_eval.utils.array_ops import get_first_index_where
 
 
-def fscore_from_intermediate_statistics(
-        intermediate_statistics, threshold, *, beta=1., ):
-    pr_curve = precision_recall_curve_from_intermediate_statistics(
-        intermediate_statistics
-    )
-    if isinstance(pr_curve, dict):
-        f, p, r, intermediate_stats = {}, {}, {}, {}
-        for cls, (pi, ri, scores_i, stats_i) in pr_curve.items():
-            (
-                f[cls], p[cls], r[cls], intermediate_stats[cls]
-            ) = single_fscore_from_precision_recall_curve(
-                pi, ri, scores_i,
-                threshold[cls] if isinstance(threshold, dict) else threshold,
-                beta=beta, intermediate_statistics=stats_i
-            )
-        return f, p, r, intermediate_stats
-    p, r, scores, intermediate_stats = pr_curve
-    return single_fscore_from_precision_recall_curve(
-        p, r, scores, threshold, beta=beta,
-        intermediate_statistics=intermediate_stats
-    )
-
-
-def best_fscore_from_intermediate_statistics(
-        intermediate_statistics, *, beta=1., min_precision=0., min_recall=0.,
-):
-    pr_curve = precision_recall_curve_from_intermediate_statistics(
-        intermediate_statistics
-    )
-    if isinstance(pr_curve, dict):
-        f, p, r, thr, intermediate_stats = {}, {}, {}, {}, {}
-        for cls, (pi, ri, scores_i, stats_i) in pr_curve.items():
-            (
-                f[cls], p[cls], r[cls], thr[cls], intermediate_stats[cls]
-            ) = best_fscore_from_precision_recall_curve(
-                pi, ri, scores_i, beta=beta,
-                min_precision=min_precision, min_recall=min_recall,
-                intermediate_statistics=stats_i,
-            )
-        return f, p, r, thr, intermediate_stats
-    p, r, scores, intermediate_stats = pr_curve
-    return best_fscore_from_precision_recall_curve(
-        p, r, scores, beta=beta,
-        min_precision=min_precision, min_recall=min_recall,
-        intermediate_statistics=intermediate_stats
-    )
-
-
 def precision_recall_curve_from_intermediate_statistics(
-        intermediate_statistics
+        scores_intermediate_statistics
 ):
-    if isinstance(intermediate_statistics, dict):
+    if isinstance(scores_intermediate_statistics, dict):
         return {
             cls: precision_recall_curve_from_intermediate_statistics(
                 scores_stats)
-            for cls, scores_stats in intermediate_statistics.items()
+            for cls, scores_stats in scores_intermediate_statistics.items()
         }
-    scores, stats = intermediate_statistics
+    scores, stats = scores_intermediate_statistics
     assert isinstance(stats, dict), type(stats)
     assert all([key in stats for key in ['tps', 'fps', 'n_ref']]), stats.keys()
     p = stats['tps'] / np.maximum(stats['tps']+stats['fps'], 1)
@@ -81,39 +33,106 @@ def fscore_from_precision_recall(precision, recall, *, beta=1.):
     )
 
 
-def best_fscore_from_precision_recall_curve(
-        precision, recall, scores, *, beta=1., min_precision=0., min_recall=0.,
-        intermediate_statistics=None
+def fscore_curve_from_intermediate_statistics(
+        scores_intermediate_statistics, beta=1.
 ):
+    if isinstance(scores_intermediate_statistics, dict):
+        f, p, r, scores, intermediate_stats = {}, {}, {}, {}, {}
+        for cls, scores_stats in scores_intermediate_statistics.items():
+            (
+                f[cls], p[cls], r[cls], scores[cls], intermediate_stats[cls]
+            ) = fscore_curve_from_intermediate_statistics(
+                scores_stats, beta=beta,
+            )
+        return f, p, r, scores, intermediate_stats
+    p, r, scores, intermediate_stats = precision_recall_curve_from_intermediate_statistics(
+        scores_intermediate_statistics
+    )
+    sort_idx = np.argsort(scores)
+    scores = scores[sort_idx]
+    p = p[sort_idx]
+    r = r[sort_idx]
+    f_beta = fscore_from_precision_recall(p, r, beta=beta)
+    intermediate_stats = {
+        key: stat if np.isscalar(stat) else stat[sort_idx]
+        for key, stat in intermediate_stats.items()
+    }
+    return f_beta, p, r, scores, intermediate_stats
+
+
+def best_fscore_from_fscore_curve(
+        fscore, precision, recall, scores, intermediate_statistics, *,
+        min_precision=0., min_recall=0.,
+):
+    if isinstance(fscore, dict):
+        f, p, r, thresholds, intermediate_stats = {}, {}, {}, {}, {}
+        for cls in fscore.keys():
+            (
+                f[cls], p[cls], r[cls], thresholds[cls], intermediate_stats[cls]
+            ) = best_fscore_from_fscore_curve(
+                fscore[cls], precision[cls], recall[cls], scores[cls],
+                intermediate_statistics=intermediate_statistics[cls],
+                min_precision=min_precision, min_recall=min_recall,
+            )
+        return f, p, r, thresholds, intermediate_stats
+    assert isinstance(fscore, np.ndarray), type(precision)
     assert isinstance(precision, np.ndarray), type(precision)
     assert isinstance(recall, np.ndarray), type(recall)
     assert isinstance(scores, np.ndarray), type(scores)
+    assert fscore.ndim == 1, fscore.shape
     assert precision.ndim == 1, precision.shape
     assert recall.ndim == 1, recall.shape
     assert scores.ndim == 1, scores.shape
-    sort_idx = np.argsort(scores)
-    scores = scores[sort_idx]
-    precision = precision[sort_idx]
-    recall = recall[sort_idx]
-    f_beta = fscore_from_precision_recall(precision, recall, beta=beta)
-    f_beta[precision < min_precision] = 0.
-    f_beta[recall < min_recall] = 0.
-    best_idx = len(f_beta) - 1 - np.argmax(f_beta[::-1], axis=0)
+    fscore[precision < min_precision] = 0.
+    fscore[recall < min_recall] = 0.
+    best_idx = len(fscore) - 1 - np.argmax(fscore[::-1], axis=0)
     threshold = (
         (scores[best_idx] + scores[best_idx-1])/2 if best_idx > 0 else -np.inf
     )
-    if intermediate_statistics is None:
-        return (
-            f_beta[best_idx], precision[best_idx], recall[best_idx], threshold
-        )
-    else:
-        return (
-            f_beta[best_idx], precision[best_idx], recall[best_idx], threshold,
-            {
-                key: stat if np.isscalar(stat) else stat[sort_idx[best_idx]]
-                for key, stat in intermediate_statistics.items()
-            }
-        )
+    return (
+        fscore[best_idx], precision[best_idx], recall[best_idx], threshold,
+        {
+            key: stat if np.isscalar(stat) else stat[best_idx]
+            for key, stat in intermediate_statistics.items()
+        }
+    )
+
+
+def best_fscore_from_intermediate_statistics(
+        scores_intermediate_statistics, beta=1.,
+        min_precision=0., min_recall=0.
+):
+    f, p, r, scores, intermediate_stats = fscore_curve_from_intermediate_statistics(
+        scores_intermediate_statistics, beta=beta
+    )
+    f, p, r, threshold, intermediate_stats = best_fscore_from_fscore_curve(
+        f, p, r, scores, intermediate_stats,
+        min_precision=min_precision, min_recall=min_recall,
+    )
+    return f, p, r, threshold, intermediate_stats
+
+
+def single_fscore_from_intermediate_statistics(
+        scores_intermediate_statistics, threshold, *, beta=1., ):
+    if isinstance(scores_intermediate_statistics, dict):
+        f, p, r, intermediate_stats = {}, {}, {}, {}
+        for cls, scores_stats in scores_intermediate_statistics.items():
+            (
+                f[cls], p[cls], r[cls], intermediate_stats[cls]
+            ) = single_fscore_from_intermediate_statistics(
+                scores_stats,
+                threshold[cls] if isinstance(threshold, dict) else threshold,
+                beta=beta,
+            )
+        return f, p, r, intermediate_stats
+    pr_curve = precision_recall_curve_from_intermediate_statistics(
+        scores_intermediate_statistics
+    )
+    p, r, scores, intermediate_stats = pr_curve
+    return single_fscore_from_precision_recall_curve(
+        p, r, scores, threshold, beta=beta,
+        intermediate_statistics=intermediate_stats
+    )
 
 
 def single_fscore_from_precision_recall_curve(
