@@ -6,8 +6,8 @@ def staircase_auc(y, x, max_x=None):
     """Area under Curve (AUC) with staircase type interpolation
 
     Args:
-        y (1d np.array): y values
-        x (1d np.array): x values
+        y (1d np.ndarray): y values
+        x (1d np.ndarray): x values
         max_x: maximal x value. If not None curve is interpolated up to this x
             value. Else AUC is computed up to the maximal value in x array.
 

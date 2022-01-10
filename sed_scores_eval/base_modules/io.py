@@ -4,31 +4,65 @@ import pandas as pd
 from scipy.interpolate import interp1d
 import lazy_dataset
 from sed_scores_eval.utils.scores import (
-    get_unique_thresholds, extract_timestamps_and_classes_from_dataframe
+    create_score_dataframe,
+    validate_score_dataframe,
+    get_unique_thresholds,
 )
 from sed_scores_eval.base_modules.ground_truth import (
     onset_offset_times_to_indices
 )
+from urllib.request import urlretrieve
 
 
-def parse_inputs(scores, ground_truth):
-    assert isinstance(scores, (dict, str, Path, lazy_dataset.Dataset)), type(scores)
+def parse_inputs(scores, ground_truth, *, tagging=False):
+    """read scores and ground_truth from files if string or path provided and
+    validate audio ids
+
+    Args:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+
+    Returns:
+        scores:
+        ground_truth:
+        audio_ids:
+
+    """
+    if not isinstance(scores, (dict, str, Path, lazy_dataset.Dataset)):
+        raise ValueError(
+            f'scores must be dict, str, pathlib.Path or lazy_dataset.Dataset '
+            f'but {type(scores)} was given.'
+        )
+    if not isinstance(ground_truth, (dict, str, Path)):
+        raise ValueError(
+            f'ground_truth must be dict, str or Path but {type(ground_truth)} '
+            f'was given.'
+        )
     if isinstance(scores, (str, Path)):
         scores = Path(scores)
-        assert scores.is_dir(), scores
         scores = lazy_sed_scores_loader(scores)
     audio_ids = sorted(scores.keys())
-    assert isinstance(ground_truth, (dict, str, Path)), type(ground_truth)
     if isinstance(ground_truth, (str, Path)):
         ground_truth = Path(ground_truth)
-        assert ground_truth.is_file(), ground_truth
-        ground_truth = read_ground_truth_events(ground_truth)
-    assert sorted(ground_truth.keys()) == audio_ids, (
-        set(audio_ids) - ground_truth.keys(), ground_truth.keys() - set(audio_ids))
+        if tagging:
+            ground_truth, _ = read_ground_truth_tags(ground_truth)
+        else:
+            ground_truth = read_ground_truth_events(ground_truth)
+    if not ground_truth.keys() == set(audio_ids):
+        raise ValueError(
+            f'ground_truth audio ids do not match audio ids in scores. '
+            f'Missing ids: {set(audio_ids) - ground_truth.keys()}. '
+            f'Additional ids: {ground_truth.keys() - set(audio_ids)}.'
+        )
     return scores, ground_truth, audio_ids
 
 
-def write_sed_scores(scores, filepath, event_classes=None):
+def write_sed_scores(scores, filepath, *, timestamps=None, event_classes=None):
     """write sound event detection scores to tsv file
 
     Args:
@@ -36,45 +70,49 @@ def write_sed_scores(scores, filepath, event_classes=None):
             of a score window in first two columns followed by sed score
             columns for each event class.
         filepath (str or pathlib.Path): path to file that is to be written
+        timestamps (np.ndarray or list of float): optional list of timestamps
+            to be compared with timestamps in scores DataFrame
         event_classes (list of str): optional list of event classes used to
             assert correct event labels in scores DataFrame
 
     """
-    score_data_frame_assertions(scores, event_classes=event_classes)
+    if not isinstance(scores, (np.ndarray, pd.DataFrame)):
+        raise ValueError(
+            f'scores must be np.ndarray or pd.DataFrame but {type(scores)}'
+            f'was given.'
+        )
+    if isinstance(scores, np.ndarray):
+        if timestamps is None:
+            raise ValueError(
+                f'timestamps must not be None if scores is np.ndarray'
+            )
+        scores = create_score_dataframe(scores, timestamps, event_classes)
+    validate_score_dataframe(scores, timestamps=timestamps, event_classes=event_classes)
     scores.to_csv(filepath, sep='\t', index=False)
-
-
-def score_data_frame_assertions(scores, event_classes=None):
-    assert isinstance(scores, pd.DataFrame), type(scores)
-    column_names = list(scores.columns)
-    assert len(column_names) > 2, column_names
-    assert column_names[0] == 'onset', column_names
-    assert column_names[1] == 'offset', column_names
-    if event_classes is not None:
-        assert column_names[2:] == event_classes, (column_names, event_classes)
-    onset_times = scores['onset'].to_numpy()
-    offset_times = scores['offset'].to_numpy()
-    assert (offset_times[:-1] == onset_times[1:]).all(), (onset_times, offset_times)
 
 
 def read_sed_scores(filepath):
     scores = pd.read_csv(filepath, sep='\t')
-    score_data_frame_assertions(scores)
+    validate_score_dataframe(scores)
     return scores
 
 
 def lazy_sed_scores_loader(dir_path):
-    """loader for sound event detection files in a directory
+    """lazy loader for sound event detection files in a directory. This is
+    particularly useful if scores do not fit in memory for all audio files
+    simultaneously.
 
     Args:
         dir_path (str or pathlib.Path): path to directory with sound event
             detection files
     """
     dir_path = Path(dir_path)
+    if not dir_path.is_dir():
+        raise NotADirectoryError(str(dir_path))
     score_files = {}
     for file in sorted(dir_path.iterdir()):
-        assert file.is_file(), file
-        assert file.name.endswith('.tsv'), file
+        if not file.is_file() or not file.name.endswith('.tsv'):
+            raise ValueError('dir_path must only contain tsv files.')
         score_files[file.name[:-len('.tsv')]] = str(file)
     scores = lazy_dataset.new(score_files)
     return scores.map(read_sed_scores)
@@ -93,10 +131,15 @@ def read_ground_truth_events(filepath):
     """
     ground_truth = {}
     file = pd.read_csv(filepath, sep='\t')
-    assert [
+    if not all([
         name in list(file.columns)
         for name in ['filename', 'onset', 'offset', 'event_label']
-    ], list(file.columns)
+    ]):
+        raise ValueError(
+            f'ground_truth events file must contain columns "filename", '
+            f'"onset", "offset" and "event_label" but only columns '
+            f'{list(file.columns)} were found.'
+        )
     for filename, onset, offset, event_label in zip(
         file['filename'], file['onset'], file['offset'], file['event_label']
     ):
@@ -121,28 +164,36 @@ def read_ground_truth_tags(filepath):
         filepath (str or pathlib.Path): path to file that is to be read.
 
     Returns:
-        tags:
-        class_counts:
+        tags (dict of lists): list of active events for each audio file.
+        class_counts (dict of ints): number of files in which event_class is
+            active for each event_class
 
     """
     tags = {}
     file = pd.read_csv(filepath, sep='\t')
-    assert [
-        name in list(file.columns)
-        for name in ['filename', 'event_label']
-    ], list(file.columns)
+    if not all([
+        name in list(file.columns) for name in ['filename', 'event_label']
+    ]):
+        raise ValueError(
+            f'ground_truth tags file must contain columns "filename", '
+            f'and "event_label" but only columns {list(file.columns)} were '
+            f'found.'
+        )
     class_counts = {}
     for filename, event_labels in zip(file['filename'], file['event_label']):
         example_id = filename.rsplit('.', maxsplit=1)[0]
         if example_id not in tags:
             tags[example_id] = []
-        if len(event_labels) > 0:
+        if isinstance(event_labels, str):
             event_labels = event_labels.split(',')
             for label in event_labels:
                 tags[example_id].append(label)
                 if label not in class_counts:
                     class_counts[label] = 0
                 class_counts[label] += 1
+        else:
+            # file without active events
+            assert np.isnan(event_labels), event_labels
     return tags, class_counts
 
 
@@ -169,32 +220,36 @@ def read_audio_durations(filepath):
 
 
 def write_detection(
-        scores, thresholds, filepath, audio_format='wav'
+        scores, threshold, filepath, audio_format='wav'
 ):
-    """perform sound event detection and write detected events to tsv file
+    """perform thresholding of sound event detection scores and write detected
+    events to tsv file
 
     Args:
         scores (dict of pandas.DataFrame): each DataFrame containing onset and
             offset times of a score window in first two columns followed by
             sed score columns for each event class. Dict keys have to be
             filenames without audio format ending.
-        thresholds (np.array): decision thresholds for each event class.
+        threshold ((dict of) float): threshold that is to be evaluated.
         filepath (str or pathlib.Path): path to file that is to be written/extended.
         audio_format: the audio format that is required to reconstruct the
-            filename from dict keys.
+            filename from audio ids/keys.
 
     """
-    assert hasattr(scores, 'keys'), 'scores must implement scores.keys()'
-    assert callable(scores.keys), 'scores must implement scores.keys()'
+    if not hasattr(scores, 'keys') or not callable(scores.keys):
+        raise ValueError('scores must implement scores.keys()')
     keys = sorted(scores.keys())
-    _, event_classes = extract_timestamps_and_classes_from_dataframe(
-        scores[keys[0]])
-    if isinstance(thresholds, dict):
-        thresholds = [thresholds[event_class] for event_class in event_classes]
-    if not np.isscalar(thresholds):
-        assert isinstance(thresholds, (list, np.ndarray)), thresholds
-        thresholds = np.array(thresholds)
-        assert thresholds.shape == (len(event_classes),), thresholds.shape
+    _, event_classes = validate_score_dataframe(scores[keys[0]])
+    if isinstance(threshold, dict):
+        threshold = [threshold[event_class] for event_class in event_classes]
+        if not all([np.isscalar(thr) for thr in threshold]):
+            raise ValueError('All values of thresholds dict must be scalars')
+        threshold = np.asanyarray(threshold)
+    elif not np.isscalar(threshold):
+        raise ValueError(
+            f'threshold must be (dict of) scalar(s) but {type(threshold)} '
+            f'was given.'
+        )
     filepath = Path(filepath)
     if not filepath.exists() or filepath.stat().st_size == 0:
         with Path(filepath).open('w') as fid:
@@ -203,14 +258,11 @@ def write_detection(
     with filepath.open('a') as fid:
         for key in keys:
             scores_i = scores[key]
-            score_data_frame_assertions(scores_i, event_classes=event_classes)
-            if event_classes is None:
-                event_classes = list(scores_i.columns)[2:]
-                assert thresholds.shape == (len(event_classes),)
+            validate_score_dataframe(scores_i, event_classes=event_classes)
             onset_times = scores_i['onset'].to_numpy()
             offset_times = scores_i['offset'].to_numpy()
             scores_i = scores_i[event_classes].to_numpy()
-            detections = scores_i > thresholds
+            detections = scores_i > threshold
             zeros = np.zeros_like(detections[:1, :])
             detections = np.concatenate((zeros, detections, zeros), axis=0).astype(np.float)
             change_points = detections[1:] - detections[:-1]
@@ -246,21 +298,26 @@ def write_detections_for_multiple_thresholds(
         dir_path (str or pathlib.Path): path to directory where to save
             detection files.
         audio_format: the audio format that is required to reconstruct the
-            filename from dict keys.
+            filename from audio ids/keys.
         score_transform:
 
     """
-    assert hasattr(scores, 'keys'), 'scores must implement scores.keys()'
-    assert callable(scores.keys), 'scores must implement scores.keys()'
+    if not hasattr(scores, 'keys') or not callable(scores.keys):
+        raise ValueError('scores must implement scores.keys()')
     keys = sorted(scores.keys())
-    thresholds = np.array(thresholds)
-    assert thresholds.ndim == 1, thresholds.shape
+    thresholds = np.asanyarray(thresholds)
+    if thresholds.ndim != 1:
+        raise ValueError(
+            f'thresholds must be a 1-dimensional array but has shape '
+            f'{thresholds.shape}.'
+        )
     dir_path = Path(dir_path)
 
     if score_transform is not None:
         if isinstance(score_transform, (str, Path)):
             score_transform = read_score_transform(score_transform)
-        assert callable(score_transform), score_transform
+        if not callable(score_transform):
+            raise ValueError('score_transform must be callable.')
         if isinstance(scores, lazy_dataset.Dataset):
             scores = scores.map(score_transform)
         else:
@@ -284,8 +341,10 @@ def write_score_transform(
 ):
     """compute and save a piecewise-linear score transform which is supposed
     to uniformly distribute scores from within ground truth events between 0
-    and 1. This allows to obtain smoother PSD-ROC curves with linearly spaced
-    thresholds.
+    and 1. This allows to obtain smoother PSD-ROC curve approximations when
+    using the psds_eval package (https://github.com/audioanalytic/psds_eval)
+    with linearly spaced thresholds.
+    This function is primarily used for testing purposes.
 
     Args:
         scores (dict of pandas.DataFrames): score DataFrames for each audio
@@ -305,7 +364,7 @@ def write_score_transform(
     scores_at_positives = {}
     for key in keys:
         scores_for_key = scores[key]
-        score_data_frame_assertions(scores_for_key)
+        validate_score_dataframe(scores_for_key)
         onset_times = scores_for_key['onset'].to_numpy()
         offset_times = scores_for_key['offset'].to_numpy()
         timestamps = np.concatenate((onset_times, offset_times[-1:]))
@@ -358,7 +417,7 @@ def read_score_transform(filepath):
     y = transform['y'].to_numpy()
 
     def score_transform(scores):
-        score_data_frame_assertions(scores, event_classes=event_classes)
+        validate_score_dataframe(scores, event_classes=event_classes)
         transformed_scores = [
             scores['onset'].to_numpy(), scores['offset'].to_numpy()
         ]
@@ -374,3 +433,22 @@ def read_score_transform(filepath):
         return transformed_scores
 
     return score_transform
+
+
+def download_test_data():
+    from sed_scores_eval import package_dir
+    import zipfile
+    tests_dir_path = package_dir / 'tests'
+    if (tests_dir_path / 'data').exists():
+        print('Test data already exists.')
+        return
+    print('Download test data')
+    zip_file_path = tests_dir_path / 'data.zip'
+    urlretrieve(
+        'http://go.upb.de/sed_scores_eval_test_data',
+        filename=str(zip_file_path)
+    )
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(tests_dir_path)
+    zip_file_path.unlink()
+    print('Download successful')

@@ -14,27 +14,63 @@ seconds_per_unit_of_time = {
 
 
 def psds(
-        scores, ground_truth, audio_durations, dtc_threshold, gtc_threshold,
-        cttc_threshold=None, alpha_ct=.0, alpha_st=.0,
-        unit_of_time='hour', max_efpr=100.,
+        scores, ground_truth, audio_durations, *,
+        dtc_threshold, gtc_threshold, cttc_threshold=None,
+        alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6,
 ):
-    """
+    """Computes Polyphonic Sound Detection Score (PSDS) [1] using the exact
+    and efficient computation approach proposed in [2].
+
+    [1] C. Bilen, G. Ferroni, F. Tuveri, J. Azcarreta and S. Krstulovic,
+    "A Framework for the Robust Evaluation of Sound Event Detection",
+    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2020, pp. 61–65
+
+    [2] J.Ebbers, R.Serizel, and R.Haeb-Umbach
+    "Threshold-Independent Evaluation of Sound Event Detection Scores",
+    submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2022
 
     Args:
-        scores:
-        ground_truth:
-        audio_durations:
-        dtc_threshold:
-        gtc_threshold:
-        cttc_threshold:
-        alpha_ct:
-        alpha_st:
-        unit_of_time:
-        max_efpr:
-        time_decimals:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+        audio_durations: The duration of each audio file in the evaluation set.
+        dtc_threshold (float): detection tolerance criterion threshold
+        gtc_threshold (float): ground truth intersection criterion threshold
+        cttc_threshold (float): cross trigger tolerance criterion threshold
+        alpha_ct (float): parameter for penalizing cross triggers.
+            More specifically, it is the weight of the cross trigger rate
+            (averaged over all other classes) that is added to the False
+            Positive Rate (FPR) yielding the effective FPR (eFPR). Default is 0.
+        alpha_st (float): parameter for penalizing instability across classes.
+            More specifically, it is the weight of the standard deviation of
+            the per-class ROCs, that is subtracted from the mean of the
+            per-class ROCs. Default is 0.
+        unit_of_time (str): the unit of time \in {second, minute, hour} to be
+            used for computation of the eFPR (which is defined as rate per unit
+            of time). Default is hour.
+        max_efpr (float): the maximum eFPR for which the system is evaluated,
+            i.e., until where the Area under PSD ROC Curve is computed.
+            Default is 100.
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high, e.g., a detection with an ground truth intersection
+            exactly matching the DTC, may be falsely counted as false detection
+            because of small deviations due to limited floating point precision.
 
     Returns:
+        psds (float): Polyphonic Sound Detection Score (PSDS), i.e., the area
+            under the PSD ROC Curve up to max_efpr normalized by max_efpr.
+        psd_roc (tuple of 1d np.ndarrays): tuple of effective True Positive
+            Rates and effective False Positive Rates.
+        single_class_psd_rocs (dict of tuples of 1d np.ndarrays):
+            tuple of True Positive Rates and effective False Positive Rates
+            for each event class.
 
     """
     effective_tp_rate, effective_fp_rate, single_class_psds_rocs = psd_roc(
@@ -59,20 +95,86 @@ def psd_roc(
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6,
 ):
+    """Computes Polyphonic Sound Detection ROC (PSD ROC) [1] using the exact
+    and efficient computation approach proposed in [2].
 
+    [1] C. Bilen, G. Ferroni, F. Tuveri, J. Azcarreta and S. Krstulovic,
+    "A Framework for the Robust Evaluation of Sound Event Detection",
+    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2020, pp. 61–65
+
+    [2] J.Ebbers, R.Serizel, and R.Haeb-Umbach
+    "Threshold-Independent Evaluation of Sound Event Detection Scores",
+    submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2022
+
+    Args:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+        audio_durations: The duration of each audio file in the evaluation set.
+        dtc_threshold (float): detection tolerance criterion threshold
+        gtc_threshold (float): ground truth intersection criterion threshold
+        cttc_threshold (float): cross trigger tolerance criterion threshold
+        alpha_ct (float): parameter for penalizing cross triggers.
+            More specifically, it is the weight of the cross trigger rate
+            (averaged over all other classes) that is added to the False
+            Positive Rate (FPR) yielding the effective FPR (eFPR). Default is 0.
+        alpha_st (float): parameter for penalizing instability across classes.
+            More specifically, it is the weight of the standard deviation of
+            the per-class ROCs, that is subtracted from the mean of the
+            per-class ROCs. Default is 0.
+        unit_of_time (str): the unit of time \in {second, minute, hour} to be
+            used for computation of the eFPR (which is defined as rate per unit
+            of time). Default is hour.
+        max_efpr (float): the maximum eFPR for which the system is evaluated,
+            i.e., until where the Area under PSD ROC Curve is computed.
+            Default is 100.
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high, e.g., a detection with an ground truth intersection
+            exactly matching the DTC, may be falsely counted as false detection
+            because of small deviations due to limited floating point precision.
+
+    Returns:
+        etpr (1d np.ndarray): effective True Positive Rates.
+        efpr (1d np.ndarray): effective False Positive Rates.
+        single_class_psd_rocs (dict of tuples of 1d np.ndarrays):
+            tuple of True Positive Rates and effective False Positive Rates
+            for each event class.
+
+    """
     if alpha_ct == 0.:
-        assert cttc_threshold is None, cttc_threshold
+        if cttc_threshold is not None:
+            raise ValueError(
+                'cttc_threshold has been provided but alpha_ct is 0.'
+            )
     else:
-        assert cttc_threshold is not None
+        if cttc_threshold is None:
+            raise ValueError(
+                'alpha_ct is not 0 but no cttc_threshold has been provided.'
+            )
 
-    scores, ground_truth, keys = parse_inputs(scores, ground_truth)
-    assert isinstance(audio_durations, (dict, str, Path)), type(audio_durations)
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    if not isinstance(audio_durations, (dict, str, Path)):
+        raise ValueError(
+            f'audio_durations must be dict, str or Path but '
+            f'{type(audio_durations)} was given.'
+        )
     if isinstance(audio_durations, (str, Path)):
         audio_durations = Path(audio_durations)
         assert audio_durations.is_file(), audio_durations
         audio_durations = read_audio_durations(audio_durations)
-    assert audio_durations.keys() == set(keys), (
-        set(keys) - audio_durations.keys(), audio_durations.keys() - set(keys))
+
+    if not audio_durations.keys() == set(audio_ids):
+        raise ValueError(
+            f'audio_durations audio ids do not match audio ids in scores. '
+            f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
+            f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
+        )
     dataset_duration = sum(audio_durations.values())
 
     intermediate_stats = intermediate_statistics(
@@ -90,25 +192,61 @@ def psd_roc(
 
 
 def psd_roc_from_intermediate_statistics(
-        intermediate_stats, dataset_duration,
+        scores_intermediate_statistics, dataset_duration,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
 ):
-    """
+    """Computes Polyphonic Sound Detection ROC (PSD ROC) [1] from precomputed
+    intermediate statistics curves.
+
+    [1] C. Bilen, G. Ferroni, F. Tuveri, J. Azcarreta and S. Krstulovic,
+    "A Framework for the Robust Evaluation of Sound Event Detection",
+    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2020, pp. 61–65
 
     Args:
-        intermediate_stats:
-        dataset_duration:
-        alpha_ct:
-        alpha_st:
-        unit_of_time:
-        max_efpr:
+        scores_intermediate_statistics (dict of tuples): tuple of scores array
+            and dict of intermediate_statistics with the following key value
+            pairs for each event class:
+             'tps' (1d np.ndarray): true positive counts for each score
+             'fps' (1d np.ndarray): false positive counts for each score
+             'cts' (2d np.ndarray): cross triggers with each of the other
+                classes (second dim) for each score (first dim)
+             'n_ref' (int): number of ground truth events
+             't_ref_ofther' (list of float): total ground truth event durations
+                for each of the other classes.
+        dataset_duration (float): total dataset duration, i.e., the sum of the
+            individual file durations.
+        alpha_ct (float): parameter for penalizing cross triggers.
+            More specifically, it is the weight of the cross trigger rate
+            (averaged over all other classes) that is added to the False
+            Positive Rate (FPR) yielding the effective FPR (eFPR).
+        alpha_st (float): parameter for penalizing instability across classes.
+            More specifically, it is the weight of the standard deviation of
+            the per-class ROCs, that is subtracted from the mean of the
+            per-class ROCs.
+        unit_of_time (str): the unit of time \in {second, minute, hour} to be
+            used for computation of the eFPR (which is defined as rate per unit
+            of time). Default is hour.
+        max_efpr (float): the maximum eFPR for which the system is evaluated,
+            i.e., until where the Area under PSD ROC Curve is computed.
 
     Returns:
+        etpr (1d np.ndarray): effective True Positive Rates.
+        efpr (1d np.ndarray): effective False Positive Rates.
+        single_class_psd_rocs (dict of tuples of 1d np.ndarrays):
+            tuple of True Positive Rates and effective False Positive Rates
+            for each event class.
 
     """
 
+    if not isinstance(scores_intermediate_statistics, dict):
+        raise ValueError(
+            f'scores_intermediate_statistics must be dict '
+            f'but {type(scores_intermediate_statistics)} was given.'
+        )
+
     single_class_psd_rocs = _single_class_roc_from_intermediate_statistics(
-        intermediate_stats,
+        scores_intermediate_statistics,
         dataset_duration=dataset_duration,
         alpha_ct=alpha_ct, unit_of_time=unit_of_time, max_efpr=max_efpr,
     )
@@ -136,19 +274,40 @@ def psd_roc_from_intermediate_statistics(
 
 
 def _single_class_roc_from_intermediate_statistics(
-        intermediate_stats, dataset_duration,
+        scores_intermediate_statistics, dataset_duration,
         alpha_ct=.0, unit_of_time='hour', max_efpr=100.,
 ):
     """
 
     Args:
-        intermediate_stats:
-        dataset_duration:
-        alpha_ct:
-        unit_of_time:
-        max_efpr:
+        scores_intermediate_statistics ((dict of) tuple): tuple of scores array and
+            dict of intermediate_statistics with the following key value pairs:
+             'tps' (1d np.ndarray): true positive counts for each score
+             'fps' (1d np.ndarray): false positive counts for each score
+             'cts' (2d np.ndarray): cross triggers with each of the other
+                classes (second dim) for each score (first dim)
+             'n_ref' (int): number of ground truth events
+             't_ref_ofther' (list of float): total ground truth event durations
+                for each of the other classes.
+            If dict input is provided, keys are expected to be class names with
+            corresponding scores/intermediate_statistics as values.
+        dataset_duration (float): total dataset duration, i.e., the sum of the
+            individual file durations.
+        alpha_ct (float): parameter for penalizing cross triggers.
+            More specifically, it is the weight of the cross trigger rate
+            (averaged over all other classes) that is added to the False
+            Positive Rate (FPR) yielding the effective FPR (eFPR).
+        unit_of_time (str): the unit of time \in {second, minute, hour} to be
+            used for computation of the eFPR (which is defined as rate per unit
+            of time). Default is hour.
+        max_efpr (float): the maximum eFPR for which the system is evaluated,
+            i.e., until where the Area under PSD ROC Curve is computed.
 
     Returns:
+        tp_ratio (1d np.ndarray): True Positive Ratios
+        effective_fp_rate (1d np.ndarray): effective False Positive Rates
+        scores (1d np.ndarray): corresponding scores that the decision
+            threshold has to fall below.
 
     """
     if unit_of_time not in seconds_per_unit_of_time:
@@ -157,7 +316,7 @@ def _single_class_roc_from_intermediate_statistics(
             f'{", ".join(list(seconds_per_unit_of_time.keys()))}.'
         )
 
-    if isinstance(intermediate_stats, dict):
+    if isinstance(scores_intermediate_statistics, dict):
         return {
             cls: _single_class_roc_from_intermediate_statistics(
                 scores_stats,
@@ -166,10 +325,10 @@ def _single_class_roc_from_intermediate_statistics(
                 unit_of_time=unit_of_time,
                 max_efpr=max_efpr,
             ) for cls, scores_stats in (
-                intermediate_stats.items())
+                scores_intermediate_statistics.items())
         }
 
-    scores, stats = intermediate_stats
+    scores, stats = scores_intermediate_statistics
 
     tp_ratio = stats['tps'] / stats['n_ref']
     fp_rate = stats['fps'] / dataset_duration

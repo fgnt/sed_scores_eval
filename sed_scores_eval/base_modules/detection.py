@@ -4,19 +4,60 @@ from einops import rearrange
 
 
 def detection_onset_offset_times(scores, timestamps):
-    """
+    """get onset and offset times for event detections. Here, the number of
+    event detections is given by the number of local maximums in the score
+    signal with events being spawned when the decision threshold falls below
+    the local maximum. However, usually only a subset of these events is active
+    simultanously while others are inactive, e.g., because a certain threshold
+    does not yet fall below all local maximums. For inactive events we return
+    offset_time = onset_time. Further, when the decision threshold falls below
+    a local minimum, two separate events merge into a single event. In this
+    case, we keep the earlier event active with corresponding onset and offset
+    times, while the later event is set inactive with offset_time = onset_time.
 
     Args:
-        scores:
-        timestamps:
+        scores (1d np.ndarray): SED scores for a single event class
+        timestamps (1d np.ndarray): onset timestamps for each score plus one more
+            timestamp which is the final offset time.
 
     Returns:
+        scores_unique (1d np.ndarray): unique and sorted score array
+        onset_times (2d np.ndarray): onset times for each possible event at
+            each decsion threshold that falls below one of the unique scores.
+            Shape is (number of unique scores, number of events/local maximums).
+        offset_times (2d np.ndarray): offset times for each possible event at
+            each decsion threshold that falls below one of the unique scores.
+            Shape is (number of unique scores, number of events/local maximums).
 
-    >>> y = np.array([.4,1.,.1,.6,.5,.6,.4,.3,.6,.2])
-    >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)
-    >>> detection_onset_offset_times(y, ts)
+    >>> y = np.array([.4,1.,.6,1.,.4])
+    >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)  # each score has width of 200ms
+    >>> y, t_on, t_off = detection_onset_offset_times(y, ts)
+    >>> y
+    array([0.4, 0.6, 1. ])
+    >>> np.stack((t_on, t_off), axis=-1)
+    array([[[0. , 1. ],
+            [0.6, 0.6]],
+    <BLANKLINE>
+           [[0.2, 0.8],
+            [0.6, 0.6]],
+    <BLANKLINE>
+           [[0.2, 0.4],
+            [0.6, 0.8]]])
     """
-    onset_deltas_ = onset_deltas(scores)
+    scores = np.asanyarray(scores)
+    if not scores.ndim == 1:
+        raise ValueError(
+            f'scores must be 1-dimensional array of single class SED scores, '
+            f'but array of shape {scores.shape} was given.'
+        )
+    timestamps = np.asanyarray(timestamps)
+    if not timestamps.ndim == 1 or len(timestamps) != (len(scores) + 1):
+        raise ValueError(
+            f'timestamps must be 1-dimensional array of length(len(scores) + 1), '
+            f'but array of shape {timestamps.shape} was given.'
+        )
+
+    onset_deltas_ = _onset_deltas(scores)
     event_spawn_indices = np.argwhere(onset_deltas_ > 0.5).flatten()
     event_merge_indices = np.argwhere(onset_deltas_ < -0.5).flatten()
     assert len(event_merge_indices) == len(event_spawn_indices) - 1, (
@@ -41,24 +82,34 @@ def detection_onset_offset_times(scores, timestamps):
 
 def _single_detection_onset_offset_times(
         scores, timestamps, spawn_idx, merge_idx):
-    """
+    """get onset and offset times when threshold falls below each of the scores
+    for a single event that is spawned when threshold falls below the local
+    maximum at spawn_idx and is merged with the previous event when threshold
+    falls below the local minimum at merge_idx. merge_idx == 0 indicates that
+    event is the first event / local maximum.
 
     Args:
-        scores:
-        timestamps:
-        spawn_idx:
-        merge_idx:
+        scores (1d np.ndarray): SED scores for a single event class
+        timestamps (1d np.ndarray): onset timestamps for each score plus one more
+            timestamp which is the final offset time.
+        spawn_idx (int): Index of local maximum
+        merge_idx (int): Index of previous local minimum. If merge_idx == 0
+            event is considered the first event / local maximum.
 
     Returns:
+        onset_times (1d np.ndarray): onset times for current event when decsion
+            threshold falls below each of the scores.
+        offset_times (1d np.ndarray): offset times for current event when
+            decsion threshold falls below each of the scores.
 
-    >>> y = np.array([.4,1.,.1,.6,.5,.6,.4,.3,.6,.2])
-    >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)
+    >>> y = np.array([.4,1.,.1,.6,.5,.6,.4,])
+    >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)  # each score has width of 200ms
     >>> _single_detection_onset_offset_times(y, ts, 1, 0)
-    >>> _single_detection_onset_offset_times(y, ts, 3, 0)
+    (array([0. , 0.2, 0. , 0.2, 0.2, 0.2, 0. ]), array([0.4, 0.4, 1.4, 0.4, 0.4, 0.4, 0.4]))
     >>> _single_detection_onset_offset_times(y, ts, 3, 2)
+    (array([0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]), array([1.4, 0.6, 0.6, 0.8, 1.2, 0.8, 1.4]))
     >>> _single_detection_onset_offset_times(y, ts, 5, 4)
-    >>> _single_detection_onset_offset_times(y, ts, 8, 0)
-    >>> _single_detection_onset_offset_times(y, ts, 8, 7)
+    (array([1., 1., 1., 1., 1., 1., 1.]), array([1. , 1. , 1. , 1.2, 1. , 1.2, 1. ]))
     """
     pre_spawn_cummin_indices = np.unique(spawn_idx - cummin(scores[:spawn_idx+1][::-1])[1])
     post_spawn_cummin_indices = np.unique(spawn_idx + cummin(scores[spawn_idx:])[1])
@@ -89,20 +140,25 @@ def _single_detection_onset_offset_times(
     return onset_times, offset_times
 
 
-def onset_deltas(scores):
+def _onset_deltas(scores):
     """return the change in the total number of onsets when decision threshold
-    falls below a score.
+    falls below each of the scores, i.e., +1 at local maximums and -1 at local
+    minimums in score signal.
 
     Args:
-        scores (1d nparray): soft sound event detection scores
+        scores (1d np.ndarray): SED scores for a single event class
 
     Returns:
+        onset_deltas (1d np.ndarray): array with same length as scores
+        indicating the change in the number of onsets when decision threshold
+        falls below each of the scores, i.e., +1 at local maximums and -1 at
+        local minimums in score signal.
 
     """
     assert isinstance(scores, np.ndarray), scores
     prev_scores = np.concatenate(([-np.inf], scores[:-1]))
     next_scores = np.concatenate((scores[1:], [-np.inf]))
     return (
-            (scores > prev_scores).astype(np.int)
-            - (next_scores > scores).astype(np.int)
+        (scores > prev_scores).astype(np.int)
+        - (next_scores > scores).astype(np.int)
     )

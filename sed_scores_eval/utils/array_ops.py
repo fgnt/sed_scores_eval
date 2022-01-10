@@ -8,8 +8,8 @@ def cummin(array):
         array:
 
     Returns:
-        cummin_values (1d np.array): cummin values
-        cummin_indices (1d np.array): indices of cummin values in input array
+        cummin_values (1d np.ndarray): cummin values
+        cummin_indices (1d np.ndarray): indices of cummin values in input array
 
     >>> cummin(np.array([1.,3.,2.,0.,-1.,3,-2]))
     (array([ 1.,  1.,  1.,  0., -1., -1., -2.]), array([0, 0, 0, 3, 4, 4, 6]))
@@ -30,8 +30,8 @@ def cummax(array):
         array:
 
     Returns:
-        cummax_values (1d np.array): cummax values
-        cummax_indices (1d np.array): indices of cummax values in input array
+        cummax_values (1d np.ndarray): cummax values
+        cummax_indices (1d np.ndarray): indices of cummax values in input array
 
     >>> cummax(np.array([1.,3.,2.,0.,-1.,4.]))
     (array([1., 3., 3., 3., 3., 4.]), array([0, 1, 1, 1, 1, 5]))
@@ -52,7 +52,7 @@ def get_first_index_where(array, criterion, value):
     function returns len(array)
 
     Args:
-        array (1d np.array):
+        array (1d np.ndarray):
         criterion (str):
         value (number):
 

@@ -2,39 +2,117 @@ import numpy as np
 import pandas as pd
 
 
-def extract_timestamps_and_classes_from_dataframe(scores, event_classes=None):
-    column_names = list(scores.columns)
-    assert len(column_names) > 2, column_names
-    assert column_names[0] == 'onset', column_names
-    assert column_names[1] == 'offset', column_names
-    if event_classes is not None:
-        assert column_names[2:] == event_classes, (column_names, event_classes)
-    onset_times = scores['onset'].to_numpy()
-    offset_times = scores['offset'].to_numpy()
-    assert (offset_times[:-1] == onset_times[1:]).all(), (
-        onset_times, offset_times)
-    timestamps = np.concatenate((onset_times, offset_times[-1:]))
-    return timestamps, column_names[2:]
-
-
 def create_score_dataframe(scores, timestamps, event_classes):
-    assert isinstance(scores, (np.ndarray, list, tuple)), type(scores)
-    assert isinstance(timestamps, (np.ndarray, list, tuple)), type(timestamps)
-    assert isinstance(event_classes, (list, tuple)), type(event_classes)
-    scores = np.array(scores)
-    timestamps = np.array(timestamps)
-    assert timestamps.ndim == 1, timestamps.shape
-    assert scores.shape == (len(timestamps)-1, len(event_classes)), (
-        scores.shape, (len(timestamps)-1, len(event_classes)))
-    assert all([
-        isinstance(cls, (str, int)) for cls in event_classes
-    ]), event_classes
+    """compose SED scores with event class labels into pandas.DataFrame with
+    corresponding frame onset and offset times
+
+    Args:
+        scores (2d np.array): (T, K) SED scores for multiple event classes,
+            with T being the number of frames and K being the number of event
+            classes.
+        timestamps (1d np.array): onset timestamps for each frame plus one more
+            timestamp which is the final offset time.
+        event_classes (list of str): list of event class names
+
+    Returns: pandas.DataFrame with one row per frame where first and second
+        column are the frame onset and offset time and the other columns the
+        detection scores for the various event classes
+
+    """
+    if not isinstance(scores, (np.ndarray, list, tuple)):
+        raise ValueError(
+            f'scores must be np.ndarray, list or tuple but {type(scores)} '
+            f'was given.'
+        )
+    scores = np.asanyarray(scores)
+    if scores.ndim != 2:
+        raise ValueError(
+            f'scores must be two-dimensional but has shape {scores.shape}'
+        )
+    if not isinstance(timestamps, (np.ndarray, list, tuple)):
+        raise ValueError(
+            f'timestamps must be np.ndarray, list or tuple but '
+            f'{type(timestamps)} was given.'
+        )
+    timestamps = np.asanyarray(timestamps)
+    if timestamps.shape != (len(scores)+1,):
+        raise ValueError(
+            f'timestamps must be one-dimensional and have length '
+            f'len(scores)+1 ({len(scores) + 1}) but timestamps with shape'
+            f'{timestamps.shape} was given.'
+        )
+
+    if not isinstance(event_classes, (list, tuple)):
+        raise ValueError(
+            f'event_classes must be list or tuple but {type(event_classes)} '
+            f'was given.'
+        )
+    if len(event_classes) != scores.shape[1]:
+        raise ValueError(
+            f'length of event_classes ({len(event_classes)}) does not match '
+            f'scores.shape[1] ({scores.shape[1]}).'
+        )
+    if not all([isinstance(c, (str, int)) for c in event_classes]):
+        raise ValueError(
+            f'All event classes must be either str or int but '
+            f'event_classes={event_classes} was given.'
+        )
     return pd.DataFrame(
         np.concatenate((
             timestamps[:-1, None], timestamps[1:, None], scores
         ), axis=1),
         columns=['onset', 'offset', *event_classes],
     )
+
+
+def validate_score_dataframe(scores, timestamps=None, event_classes=None):
+    """validate that scores is a pandas.DataFrame and has the correct format
+    namely as provided by create_score_dataframe and return timestamps array
+    and list of event class names.
+
+    Args:
+        scores: SED scores
+        timestamps:
+        event_classes (list of str): optional list of event classes used to
+            assert correct event labels in scores DataFrame
+
+    Returns:
+
+    """
+    if not isinstance(scores, pd.DataFrame):
+        raise ValueError(
+            f'scores must be pandas.DataFrame but {type(scores)} was given.')
+    column_names = list(scores.columns)
+    if (
+        len(column_names) < 3
+        or column_names[0] != 'onset'
+        or column_names[1] != 'offset'
+    ):
+        raise ValueError(
+            f'scores must contain at least 3 columns with first and second '
+            f'column being frame onset and offset time, respectively, and '
+            f'subsequent columns being score columns for various event '
+            f'classes. However, provided columns are {column_names}.'
+        )
+    if event_classes is not None and column_names[2:] != event_classes:
+        raise ValueError(
+            f'column names {column_names[2:]} do not match the event class '
+            f'names {event_classes}'
+        )
+    onset_times = scores['onset'].to_numpy()
+    offset_times = scores['offset'].to_numpy()
+    if (offset_times == onset_times).any():
+        raise ValueError('Some frames have zero length.')
+    if not (offset_times[:-1] == onset_times[1:]).all():
+        raise ValueError(
+            f'onset times must match offset times of the previous frame.'
+        )
+    timestamps_from_df = np.concatenate((onset_times, offset_times[-1:]))
+    if timestamps is not None and not np.allclose(timestamps_from_df, timestamps):
+        raise ValueError(
+            f'timestamps from file {timestamps_from_df} do not match provided timestamps {timestamps}.'
+        )
+    return timestamps_from_df, column_names[2:]
 
 
 def get_unique_thresholds(scores):

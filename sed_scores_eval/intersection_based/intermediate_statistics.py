@@ -1,5 +1,5 @@
 import numpy as np
-from sed_scores_eval.utils.scores import extract_timestamps_and_classes_from_dataframe
+from sed_scores_eval.utils.scores import validate_score_dataframe
 from sed_scores_eval.base_modules.ground_truth import event_counts_and_durations
 from sed_scores_eval.base_modules.statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.io import parse_inputs
@@ -9,25 +9,53 @@ def intermediate_statistics(
         scores, ground_truth, dtc_threshold, gtc_threshold,
         cttc_threshold=None, time_decimals=6,
 ):
-    """
+    """Compute intersection-based intermediate statistics over all audio files
+    for all event classes and decision thresholds. See [1] for details about
+    intersection-based evaluation. See [2] for details about the joint
+    computation of intermediate statistics for arbitrary decision thresholds.
+
+    [1] C. Bilen, G. Ferroni, F. Tuveri, J. Azcarreta and S. Krstulovic,
+    "A Framework for the Robust Evaluation of Sound Event Detection",
+    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2020, pp. 61–65
+
+    [2] J.Ebbers, R.Serizel, and R.Haeb-Umbach
+    "Threshold-Independent Evaluation of Sound Event Detection Scores",
+    submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2022
 
     Args:
-        scores (dict of pandas.DataFrames): score DataFrames for each audio
-            clip of a data set. Each DataFrame contains onset and offset times
-            of a score window  in first two columns followed by sed score
-            columns for each event class.
-        ground_truth (dict of lists of tuples): list of ground truth event
-            tuples (onset, offset, event class) for each audio clip.
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         cttc_threshold (float): cross trigger tolerance criterion threshold
-        time_decimals:
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high, e.g., a detection with an ground truth intersection
+            exactly matching the DTC, may be falsely counted as false detection
+            because of small deviations due to limited floating point precision.
 
-    Returns:
+    Returns (dict of tuples): for each event class a tuple of 1d scores array
+        and a dict of intermediate statistics with the following keys
+        (where each array has the same length as the scores array):
+            "tps": true positives count array
+            "fps": false positives count array
+            "cts": list of cross trigger count arrays with each other class
+            "n_ref": integer number of target class ground truth events
+            "t_ref": combined duration of all target class ground truth events
+            "n_ref_other": list of integer numbers of ground truth events from
+                each other class
+            "t_ref_other": list of combined durations of ground truth events
+                from each other class
 
     """
     scores, ground_truth, keys = parse_inputs(scores, ground_truth)
-    _, event_classes = extract_timestamps_and_classes_from_dataframe(
+    _, event_classes = validate_score_dataframe(
         scores[keys[0]])
     multi_label_statistics = accumulated_intermediate_statistics(
         scores, ground_truth,
@@ -40,19 +68,19 @@ def intermediate_statistics(
         ground_truth, event_classes=multi_label_statistics.keys()
     )
     return {
-        cls: (
+        class_name: (
             cp_scores_cls,
             {
                 **stats_cls,
-                'n_ref': n_ref[cls],
-                't_ref': t_ref[cls],
+                'n_ref': n_ref[class_name],
+                't_ref': t_ref[class_name],
                 'n_ref_other': [
-                    n_ref[ocls] for ocls in event_classes if ocls != cls],
+                    n_ref[ocls] for ocls in event_classes if ocls != class_name],
                 't_ref_other': [
-                    t_ref[ocls] for ocls in event_classes if ocls != cls],
+                    t_ref[ocls] for ocls in event_classes if ocls != class_name],
             },
         )
-        for cls, (cp_scores_cls, stats_cls) in multi_label_statistics.items()
+        for class_name, (cp_scores_cls, stats_cls) in multi_label_statistics.items()
     }
 
 
@@ -63,21 +91,43 @@ def statistics_fn(
         dtc_threshold, gtc_threshold, cttc_threshold,
         time_decimals=6,
 ):
-    """
+    """Compute intersection-based intermediate statistics for a single audio
+    and single target class given detected onset/offset times, target class
+    ground truth onset/offset times and other classes' ground truth
+    onset/offset times.
 
     Args:
-        detection_onset_times:
-        detection_offset_times:
-        target_onset_times:
-        target_offset_times:
-        other_onset_times:
-        other_offset_times:
-        dtc_threshold:
-        gtc_threshold:
-        cttc_threshold:
-        time_decimals:
+        detection_onset_times (np.ndarray): (B, M) onset times of detected
+            target class events with M being the number of detected target
+            class events, and B being an independent dimension.
+        detection_offset_times (np.ndarray): (B, M) offset times of detected
+            target class events with M being the number of detected target
+            class events, and B being an independent dimension. Note that it
+            may include offset times which are equal to the corresponding onset
+            time, which indicates that the event is inactive at that specific
+            position b along the independent axis and must not be counted as a
+            detection.
+        target_onset_times (1d np.ndarray): onset times of target class ground
+            truth events.
+        target_offset_times (1d np.ndarray): offset times of target class
+            ground truth events.
+        other_onset_times (list of 1d np.ndarrays): onset times of other class
+            ground truth events
+        other_offset_times (list of 1d np.ndarrays): offset times of other
+            class ground truth events
+        dtc_threshold (float): detection tolerance criterion threshold
+        gtc_threshold (float): ground truth intersection criterion threshold
+        cttc_threshold (float): cross trigger tolerance criterion threshold
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high, e.g., a detection with a ground truth intersection
+            exactly matching the DTC, may be falsely counted as false detection
+            because of small deviations due to limited floating point precision.
 
-    Returns:
+    Returns (dict of 1d np.ndarrays): dict of intermediate statistics with the
+        following keys (where each array has the length B):
+            "tps": true positives count array
+            "fps": false positives count array
+            "cts": list of cross trigger count arrays with each other class
 
     """
     det_crit = detection_offset_times > detection_onset_times
