@@ -116,7 +116,7 @@ file of the following format
 |...        |...  |...   |...   |
 
 or as a dict
-```json
+```python
 {
   "test1": [(3.98, 4.86, "class2"), (9.05, 10.0, "class3")],
   "test2": [(0.0, 4.07, "class1"), (0.0, 8.54, "class2"), (5.43, 7.21, "class1")],
@@ -139,7 +139,7 @@ file of the following format:
 |...      |... |
 
 or as a dict
-```json
+```python
 {
   "test1": 10.0,
   "test2": 9.7,
