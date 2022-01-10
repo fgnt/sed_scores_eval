@@ -1,10 +1,121 @@
 from sed_scores_eval.collar_based.intermediate_statistics import intermediate_statistics
-from sed_scores_eval.base_modules.fscore import (
+from sed_scores_eval.base_modules.precision_recall import (
     single_fscore_from_intermediate_statistics,
     best_fscore_from_intermediate_statistics,
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics
 )
+
+
+def precision_recall_curve(
+        scores, ground_truth, *,
+        onset_collar, offset_collar, offset_collar_rate=0.,
+        time_decimals=6,
+):
+    """Compute collar-based precision-recall curve [1].
+
+    [1] J.Ebbers, R.Serizel, and R.Haeb-Umbach
+    "Threshold-Independent Evaluation of Sound Event Detection Scores",
+    submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2022
+
+    Args:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+        onset_collar (float): allowed onset deviation in seconds
+        offset_collar (float): (at least) allowed offset deviation in seconds
+        offset_collar_rate (float): (at least) allowed offset deviation as a
+            ratio of the length of the ground truth event, with the actual
+            allowed offset deviation being:
+            offset_collar_for_gt_event = max(
+                offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
+            )
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high, detections with an onset or offset right on the
+            boundary of the collar may be falsely counted as false detection
+            because of small deviations due to limited floating point precision.
+
+    Returns: (all arrays sorted by corresponding recall)
+        precisions ((dict of) 1d np.ndarray): precision values for all operating points
+        recalls ((dict of) 1d np.ndarray): recall values for all operating points
+        scores ((dict of) 1d np.ndarray): score values that the threshold has to
+            fall below to obtain corresponding precision-recall pairs
+        intermediate_statistics ((dict of) dict): dict of
+            intermediate_statistics with the following key value pairs:
+             'tps' (1d np.ndarray): true positive counts for each score
+             'fps' (1d np.ndarray): false positive counts for each score
+             'n_ref' (int): number of ground truth events
+
+    """
+    intermediate_stats = intermediate_statistics(
+        scores=scores, ground_truth=ground_truth,
+        onset_collar=onset_collar, offset_collar=offset_collar,
+        offset_collar_rate=offset_collar_rate,
+        time_decimals=time_decimals,
+    )
+    return precision_recall_curve_from_intermediate_statistics(
+        intermediate_stats
+    )
+
+
+def fscore_curve(
+        scores, ground_truth, *,
+        onset_collar, offset_collar, offset_collar_rate=0.,
+        beta=1., time_decimals=6,
+):
+    """Compute collar-based f-scores with corresponding precisions, recalls and
+    intermediate statistics for various operating points
+
+    Args:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+        onset_collar (float): allowed onset deviation in seconds
+        offset_collar (float): (at least) allowed offset deviation in seconds
+        offset_collar_rate (float): (at least) allowed offset deviation as a
+            ratio of the length of the ground truth event, with the actual
+            allowed offset deviation being:
+            offset_collar_for_gt_event = max(
+                offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
+            )
+        beta: \beta parameter for f-score computation
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high, detections with an onset or offset right on the
+            boundary of the collar may be falsely counted as false detection
+            because of small deviations due to limited floating point precision.
+
+    Returns: (all arrays sorted by corresponding score)
+        f_beta ((dict of) 1d np.ndarray): f-score values  for all operating
+            points
+        precisions ((dict of) 1d np.ndarray): precision values for all operating points
+        recalls ((dict of) 1d np.ndarray): recall values for all operating points
+        scores ((dict of) 1d np.ndarray): score values that the threshold has to
+            fall below to obtain corresponding precision-recall pairs
+        intermediate_statistics ((dict of) dict): dict of
+            intermediate_statistics with the following key value pairs:
+            'tps': 1d np.ndarray of true positive counts for each score
+            'fps': 1d np.ndarray of false positive counts for each score
+            'n_ref': integer number of ground truth events
+
+    """
+    intermediate_stats = intermediate_statistics(
+        scores=scores, ground_truth=ground_truth,
+        onset_collar=onset_collar, offset_collar=offset_collar,
+        offset_collar_rate=offset_collar_rate,
+        time_decimals=time_decimals,
+    )
+    return fscore_curve_from_intermediate_statistics(
+        intermediate_stats, beta=beta,
+    )
 
 
 def fscore(
@@ -121,115 +232,4 @@ def best_fscore(
     return best_fscore_from_intermediate_statistics(
         intermediate_stats, beta=beta,
         min_precision=min_precision, min_recall=min_recall,
-    )
-
-
-def precision_recall_curve(
-        scores, ground_truth, *,
-        onset_collar, offset_collar, offset_collar_rate=0.,
-        time_decimals=6,
-):
-    """Compute collar-based precision-recall curve [1].
-
-    [1] J.Ebbers, R.Serizel, and R.Haeb-Umbach
-    "Threshold-Independent Evaluation of Sound Event Detection Scores",
-    submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
-    2022
-
-    Args:
-        scores (dict, str, pathlib.Path): dict of SED score DataFrames
-            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
-            or a directory path (as str or pathlib.Path) from where the SED
-            scores can be loaded.
-        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
-            event tuples (onset, offset, event label) for each audio clip or a
-            file path from where the ground truth can be loaded.
-        onset_collar (float): allowed onset deviation in seconds
-        offset_collar (float): (at least) allowed offset deviation in seconds
-        offset_collar_rate (float): (at least) allowed offset deviation as a
-            ratio of the length of the ground truth event, with the actual
-            allowed offset deviation being:
-            offset_collar_for_gt_event = max(
-                offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
-            )
-        time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, detections with an onset or offset right on the
-            boundary of the collar may be falsely counted as false detection
-            because of small deviations due to limited floating point precision.
-
-    Returns: (all arrays sorted by corresponding recall)
-        precisions ((dict of) 1d np.ndarray): precision values for all operating points
-        recalls ((dict of) 1d np.ndarray): recall values for all operating points
-        scores ((dict of) 1d np.ndarray): score values that the threshold has to
-            fall below to obtain corresponding precision-recall pairs
-        intermediate_statistics ((dict of) dict): dict of
-            intermediate_statistics with the following key value pairs:
-             'tps' (1d np.ndarray): true positive counts for each score
-             'fps' (1d np.ndarray): false positive counts for each score
-             'n_ref' (int): number of ground truth events
-
-    """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
-        onset_collar=onset_collar, offset_collar=offset_collar,
-        offset_collar_rate=offset_collar_rate,
-        time_decimals=time_decimals,
-    )
-    return precision_recall_curve_from_intermediate_statistics(
-        intermediate_stats
-    )
-
-
-def fscore_curve(
-        scores, ground_truth, *,
-        onset_collar, offset_collar, offset_collar_rate=0.,
-        beta=1., time_decimals=6,
-):
-    """Compute collar-based f-scores with corresponding precisions, recalls and
-    intermediate statistics for various operating points
-
-    Args:
-        scores (dict, str, pathlib.Path): dict of SED score DataFrames
-            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
-            or a directory path (as str or pathlib.Path) from where the SED
-            scores can be loaded.
-        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
-            event tuples (onset, offset, event label) for each audio clip or a
-            file path from where the ground truth can be loaded.
-        onset_collar (float): allowed onset deviation in seconds
-        offset_collar (float): (at least) allowed offset deviation in seconds
-        offset_collar_rate (float): (at least) allowed offset deviation as a
-            ratio of the length of the ground truth event, with the actual
-            allowed offset deviation being:
-            offset_collar_for_gt_event = max(
-                offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
-            )
-        beta: \beta parameter for f-score computation
-        time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, detections with an onset or offset right on the
-            boundary of the collar may be falsely counted as false detection
-            because of small deviations due to limited floating point precision.
-
-    Returns: (all arrays sorted by corresponding score)
-        f_beta ((dict of) 1d np.ndarray): f-score values  for all operating
-            points
-        precisions ((dict of) 1d np.ndarray): precision values for all operating points
-        recalls ((dict of) 1d np.ndarray): recall values for all operating points
-        scores ((dict of) 1d np.ndarray): score values that the threshold has to
-            fall below to obtain corresponding precision-recall pairs
-        intermediate_statistics ((dict of) dict): dict of
-            intermediate_statistics with the following key value pairs:
-            'tps': 1d np.ndarray of true positive counts for each score
-            'fps': 1d np.ndarray of false positive counts for each score
-            'n_ref': integer number of ground truth events
-
-    """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
-        onset_collar=onset_collar, offset_collar=offset_collar,
-        offset_collar_rate=offset_collar_rate,
-        time_decimals=time_decimals,
-    )
-    return fscore_curve_from_intermediate_statistics(
-        intermediate_stats, beta=beta,
     )
