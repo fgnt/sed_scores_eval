@@ -9,7 +9,7 @@ submitted to IEEE International Conference on Acoustics, Speech, and Signal Proc
 With SED systems providing soft classification scores (usually frame-wise),
 performance can be evaluated at different operating points (OPs) by varying the
 decision/discrimination threshold used for binarization of the soft scores.
-Previous evaluation frameworks evaluate a list of detected sounds
+Other evaluation frameworks evaluate a list of detected sounds
 (list of event labels with corresponding event onset and offset times) for each
 decision threshold separately.
 Therefore, they can not be used to accurately evaluate performance curves over
