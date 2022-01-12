@@ -1,30 +1,43 @@
 # sed_scores_eval
 sed_scores_eval is a package for the efficient (threshold-independent)
-evaluation of Sound Event Detection (SED) systems.
-
-With SED systems providing soft classification scores (usually frame-wise),
-performance can be evaluated at different operating points (OPs) by varying the
-decision/discrimination threshold used for binarization of the soft scores.
-Rather than evaluating a list of detected sounds (list of event labels with
-corresponding event onset and offset times) for each decision threshold
-separately, sed_scores_eval allows to efficiently and accurately compute
-performance curves over all decision thresholds jointly (also for collar-based
-and intersection-based evaluation) based on the SED system's soft
-classification scores as described in
+evaluation of Sound Event Detection (SED) systems based on the SED system's
+soft classification scores as described in
 > **Threshold-Independent Evaluation of Sound Event Detection Scores**  
 J. Ebbers, R. Serizel and R. Haeb-Umbach  
 submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP) 2022
 
+With SED systems providing soft classification scores (usually frame-wise),
+performance can be evaluated at different operating points (OPs) by varying the
+decision/discrimination threshold used for binarization of the soft scores.
+Previous evaluation frameworks evaluate a list of detected sounds
+(list of event labels with corresponding event onset and offset times) for each
+decision threshold separately.
+Therefore, they can not be used to accurately evaluate performance curves over
+all thresholds (such as Precision-Recall curves and ROC curves) given that
+there are many thousands (or even millions) of thresholds (as many as there are
+frames in the dataset) that result in a different list of detections.
+Performance curves can at most be approximated using a limited subset of
+thresholds which, however, may result in inaccurate curves (see Figure below).
+sed_scores_eval, in contrast, efficiently evaluates performance for all
+decision thresholds jointly (also for sophisticated collar-based and
+intersection-based evaluation criteria, see paper for details). It therefore
+enables the efficient and accurate computation of performance curves such as
+Precision-Recall Curves and ROC Curves.
+
+![Fig: PSD ROC from example code](https://raw.githubusercontent.com/fgnt/sed_scores_eval/master/notebooks/psd_roc.png)
+
+If you use this package please cite our paper.
 
 ## Supported Evaluation Criteria
 ### Intermediate Statistics:
-* Segment-based [[1]](#1): Classifications and targets are defined and evaluated in fixed
-  length segments.
+* Segment-based [[1]](#1): Classifications and targets are defined and
+  evaluated in fixed length segments.
 * Collar-based (a.k.a. event-based) [[1]](#1): Compares if detected event
   (onset, offset, event_label) matches a ground truth event up to a certain
   collar on onset and offset.
-* Intersection-based [[2]](#2): Evaluates the intersections of detected and ground truth
-  events (Please also cite [[2]](#2) if you use intersection-based evaluation)
+* Intersection-based [[2]](#2): Evaluates the intersections of detected and
+  ground truth events (Please also cite [[2]](#2) if you use intersection-based
+  evaluation)
   
 ### Evaluation Metrics / Curves:
 * Precision-Recall (PR) Curve: Precisions for arbitrary decision thresholds
