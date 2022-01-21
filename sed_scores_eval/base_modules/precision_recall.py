@@ -170,12 +170,10 @@ def best_fscore_from_intermediate_statistics(
             If dict input is provided keys are expected to be class names with
             corresponding scores/intermediate_statistics as values.
         beta: \beta parameter of f-score computation
-        min_precision: the minimum precision that should be achieved. If the
-            provided precision cannot be achieved at any threshold an fscore,
-            precision and recall of 0 and threshold of np.inf is returned.
-        min_recall: the minimum recall that should be achieved. If the
-            provided recall cannot be achieved at any threshold an fscore,
-            precision and recall of 0 and threshold of np.inf is returned.
+        min_precision: the minimum precision that must be achieved.
+        min_recall: the minimum recall that must be achieved. If the
+            constraint(s) cannot be achieved at any threshold, however,
+            fscore, precision, recall and threshold of 0,1,0,inf are returned.
 
     Returns:
         f_beta ((dict of) float): best achievable f-score value
@@ -200,6 +198,8 @@ def best_fscore_from_intermediate_statistics(
                 thresholds[class_name], intermediate_stats[class_name]
             ) = best_fscore_from_intermediate_statistics(
                 scores_stats, beta=beta,
+                min_precision=min_precision,
+                min_recall=min_recall,
             )
         f['macro_average'] = np.mean([f[class_name] for class_name in f])
         p['macro_average'] = np.mean([p[class_name] for class_name in p])
@@ -241,8 +241,7 @@ def single_fscore_from_intermediate_statistics(
              'n_ref' (int): number of ground truth events
             If dict input is provided keys are expected to be class names with
             corresponding scores/intermediate_statistics as values.
-        threshold ((dict of) float): threshold that is to be
-            evaluated.
+        threshold ((dict of) float): threshold that is to be evaluated.
         beta: \beta parameter of f-score computation
 
     Returns:
@@ -312,6 +311,24 @@ def _single_fscore_from_precision_recall_curve(
 
 
 def micro_average(intermediate_stats, beta=1.):
+    """Compute the mirco averaged f-score, where the intermediate statistics
+    are summed up before computation of precision, recall and f-score
+
+    Args:
+        intermediate_stats (dict of dict): contains a dict of
+            intermediate_statistics with the following key value pairs:
+            'tps' (int): true positive count for threshold
+            'fps' (int): false positive count for threshold
+            'n_ref' (int): number of ground truth events
+            for each event class
+        beta: \beta parameter of f-score computation
+
+    Returns:
+        fscore (float): micro-average fscore
+        precision (float): micro-average precision
+        recall (float): micro-average recall
+
+    """
     tps = np.sum([
         intermediate_stats[class_name]['tps']
         for class_name in intermediate_stats
@@ -331,6 +348,18 @@ def micro_average(intermediate_stats, beta=1.):
 
 
 def fscore_from_sed_eval_metrics(sed_eval_metrics):
+    """extract class-wise and averaged fscores, precisions and recalls from
+    sed_eval metrics object
+
+    Args:
+        sed_eval_metrics:
+
+    Returns:
+        fscore (dict of float): fscore values
+        precision (dict of float): precision values
+        recall (dict of float): recall values
+
+    """
     f = {}
     p = {}
     r = {}
