@@ -19,7 +19,7 @@ def test_paper_example(t_step):
         scores={'1': scores},
         ground_truth={
             '1': [(2.*t_step, 6.*t_step, 'a'), (6.*t_step, 8.*t_step, 'b')]},
-        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5
+        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5,
     )['a']
     expected_change_point_scores = [.3,.5,.6,.8, np.inf]
     expected_true_positives = [0,1,0,0,0]
@@ -73,7 +73,7 @@ def test_two_other_events(t_step):
                 (6.*t_step, 8.*t_step, 'c'),
             ],
         },
-        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5
+        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5,
     )['a']
     expected_change_point_scores = [.3,.5,.6,.8, np.inf]
     expected_true_positives = [0,1,0,0,0]
@@ -102,7 +102,8 @@ def test_two_other_events(t_step):
 
 
 @pytest.mark.parametrize("t_step", [.2, 1.])
-def test_accumulated_statistics(t_step):
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_accumulated_statistics(t_step, num_jobs):
     """
 
     Args:
@@ -126,7 +127,8 @@ def test_accumulated_statistics(t_step):
             '1': [(2.*t_step, 6.*t_step, 'a'), (6.*t_step, 8.*t_step, 'b'),],
             '2': [(2.*t_step, 6.*t_step, 'a'), (6.*t_step, 8.*t_step, 'b'),]
         },
-        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5
+        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5,
+        num_jobs=num_jobs,
     )['a']
     expected_change_point_scores = [.3,.5,.6,.8, np.inf]
     expected_true_positives = [0,2,0,0,0]
@@ -164,7 +166,7 @@ def test_no_ground_truth_events():
     change_point_scores, stats = intermediate_statistics(
         scores={'1': scores},
         ground_truth={'1': []},
-        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5
+        dtc_threshold=.5, gtc_threshold=.5, cttc_threshold=.5,
     )['a']
     expected_change_point_scores = [4, np.inf]  # highest score where a false positive occurs when threshold falls below it
     expected_true_positives = [0, 0]
@@ -207,7 +209,7 @@ def test_event_offset_beyond_file_offset(dtc_threshold):
         scores={'1': scores},
         ground_truth={'1': [(7.5, 16., 'a'), (0., 7.5, 'b'),],},
         dtc_threshold=dtc_threshold, gtc_threshold=.5,
-        cttc_threshold=dtc_threshold
+        cttc_threshold=dtc_threshold,
     )['a']
     expected_change_point_scores = [1,2,4,np.inf]
     if dtc_threshold <= .5:
@@ -261,7 +263,7 @@ def test_non_overlapping_events(dtc_threshold):
                 (3.0, 3.5, 'a'), (3.5, 4.0, 'c'), (4.0, 4.5, 'a'),
             ],
         },
-        dtc_threshold=dtc_threshold, gtc_threshold=.5, cttc_threshold=.5
+        dtc_threshold=dtc_threshold, gtc_threshold=.5, cttc_threshold=.5,
     )['a']
     if dtc_threshold <= 0.4:
         expected_change_point_scores = [.5, 1., np.inf]
@@ -322,7 +324,7 @@ def test_overlapping_events(dtc_threshold):
         ground_truth={
             '1': [(.2, 1.1, 'a'), (.2, 1.1, 'b'), (1.4, 2.3, 'b')]},
         dtc_threshold=dtc_threshold, gtc_threshold=.5,
-        cttc_threshold=dtc_threshold
+        cttc_threshold=dtc_threshold,
     )['a']
     expected_change_point_scores = [0.,1.,2.,3.,np.inf]
     if dtc_threshold <= .3:

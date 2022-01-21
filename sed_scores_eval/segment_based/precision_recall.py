@@ -9,14 +9,9 @@ from sed_scores_eval.base_modules.precision_recall import (
 
 def precision_recall_curve(
         scores, ground_truth, audio_durations, *,
-        segment_length=1., time_decimals=6,
+        segment_length=1., time_decimals=6, num_jobs=1,
 ):
-    """Compute intersection-based precision-recall curve [1].
-
-    [1] J.Ebbers, R.Serizel, and R.Haeb-Umbach
-    "Threshold-Independent Evaluation of Sound Event Detection Scores",
-    submitted to IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
-    2022
+    """Compute segment-based precision-recall curve.
 
     Args:
         scores (dict, str, pathlib.Path): dict of SED score DataFrames
@@ -33,6 +28,8 @@ def precision_recall_curve(
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns: (all arrays sorted by corresponding recall)
         precisions ((dict of) 1d np.ndarray): precision values for all operating points
@@ -48,9 +45,8 @@ def precision_recall_curve(
     """
     intermediate_stats = intermediate_statistics(
         scores=scores, ground_truth=ground_truth,
-        audio_durations=audio_durations,
-        segment_length=segment_length,
-        time_decimals=time_decimals,
+        audio_durations=audio_durations, segment_length=segment_length,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return precision_recall_curve_from_intermediate_statistics(
         intermediate_stats
@@ -59,10 +55,10 @@ def precision_recall_curve(
 
 def fscore_curve(
         scores, ground_truth, audio_durations, *,
-        segment_length=1., beta=1., time_decimals=6,
+        segment_length=1., beta=1., time_decimals=6, num_jobs=1,
 ):
-    """Compute intersection-based f-scores with corresponding precisions, recalls and
-    intermediate statistics for various operating points
+    """Compute segment-based f-scores with corresponding precisions, recalls
+    and intermediate statistics for various operating points
 
     Args:
         scores (dict, str, pathlib.Path): dict of SED score DataFrames
@@ -80,6 +76,8 @@ def fscore_curve(
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns: (all arrays sorted by corresponding score)
         f_beta ((dict of) 1d np.ndarray): f-score values  for all operating
@@ -97,9 +95,8 @@ def fscore_curve(
     """
     intermediate_stats = intermediate_statistics(
         scores=scores, ground_truth=ground_truth,
-        audio_durations=audio_durations,
-        segment_length=segment_length,
-        time_decimals=time_decimals,
+        audio_durations=audio_durations, segment_length=segment_length,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return fscore_curve_from_intermediate_statistics(
         intermediate_stats, beta=beta,
@@ -108,7 +105,7 @@ def fscore_curve(
 
 def fscore(
         scores, ground_truth, audio_durations, threshold, *,
-        segment_length, beta=1., time_decimals=6,
+        segment_length, beta=1., time_decimals=6, num_jobs=1,
 ):
     """Get segment-based f-score with corresponding precision, recall and
     intermediate statistics for a specific decision threshold
@@ -130,6 +127,8 @@ def fscore(
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns:
         fscore ((dict of) float): fscore value for threshold
@@ -144,9 +143,8 @@ def fscore(
     """
     intermediate_stats = intermediate_statistics(
         scores=scores, ground_truth=ground_truth,
-        audio_durations=audio_durations,
-        segment_length=segment_length,
-        time_decimals=time_decimals,
+        audio_durations=audio_durations, segment_length=segment_length,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return single_fscore_from_intermediate_statistics(
         intermediate_stats, threshold=threshold, beta=beta,
@@ -156,10 +154,11 @@ def fscore(
 def best_fscore(
         scores, ground_truth, audio_durations, *,
         segment_length=1., min_precision=0., min_recall=0., beta=1.,
-        time_decimals=6,
+        time_decimals=6, num_jobs=1,
 ):
-    """Get the best possible (macro-averaged) f-score with corresponding
-    precision, recall, intermediate statistics and decision threshold
+    """Get the best possible (macro-averaged) segment-based f-score with
+    corresponding precision, recall, intermediate statistics and decision
+    threshold
 
     Args:
         scores (dict, str, pathlib.Path): dict of SED score DataFrames
@@ -172,17 +171,17 @@ def best_fscore(
         audio_durations: The duration of each audio file in the evaluation set.
         segment_length: the segment length of the segments that are to be
             evaluated.
-        min_precision: the minimum precision that should be achieved. If the
-            provided precision cannot be achieved at any threshold an fscore,
-            precision and recall of 0 and threshold of np.inf is returned.
-        min_recall: the minimum recall that should be achieved. If the
-            provided recall cannot be achieved at any threshold an fscore,
-            precision and recall of 0 and threshold of np.inf is returned.
+        min_precision: the minimum precision that must be achieved.
+        min_recall: the minimum recall that must be achieved. If the
+            constraint(s) cannot be achieved at any threshold, however,
+            fscore, precision, recall and threshold of 0,1,0,inf are returned.
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns:
         f_beta ((dict of) float): best achievable f-score value
@@ -201,9 +200,8 @@ def best_fscore(
     """
     intermediate_stats = intermediate_statistics(
         scores=scores, ground_truth=ground_truth,
-        audio_durations=audio_durations,
-        segment_length=segment_length,
-        time_decimals=time_decimals,
+        audio_durations=audio_durations, segment_length=segment_length,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return best_fscore_from_intermediate_statistics(
         intermediate_stats, beta=beta,

@@ -30,7 +30,7 @@ def detection_onset_offset_times(scores, timestamps):
             Shape is (number of unique scores, number of events/local maximums).
 
     >>> y = np.array([.4,1.,.6,1.,.4])
-    >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)  # each score has width of 200ms
+    >>> ts = np.linspace(0., len(y)*.2, len(y) + 1)  # each score has width of 200ms
     >>> y, t_on, t_off = detection_onset_offset_times(y, ts)
     >>> y
     array([0.4, 0.6, 1. ])
@@ -73,15 +73,19 @@ def detection_onset_offset_times(scores, timestamps):
         else:
             current_merge_idx = event_merge_indices[i-1]
         onset_offset_times.append(_single_detection_onset_offset_times(
-            scores, timestamps, current_spawn_idx, current_merge_idx))
-    onset_offset_times = np.array(onset_offset_times)[:, :, unique_indices]
+            scores, timestamps, current_spawn_idx, current_merge_idx,
+            scores_unique, inverse_indices
+        ))
+    onset_offset_times = np.array(onset_offset_times)
     onset_offset_times = rearrange(onset_offset_times, 'd t b -> t b d')
     onset_times, offset_times = onset_offset_times
     return scores_unique, onset_times, offset_times
 
 
 def _single_detection_onset_offset_times(
-        scores, timestamps, spawn_idx, merge_idx):
+        scores, timestamps, spawn_idx, merge_idx_prev,
+        scores_unique, inverse_indices,
+):
     """get onset and offset times when threshold falls below each of the scores
     for a single event that is spawned when threshold falls below the local
     maximum at spawn_idx and is merged with the previous event when threshold
@@ -93,8 +97,10 @@ def _single_detection_onset_offset_times(
         timestamps (1d np.ndarray): onset timestamps for each score plus one more
             timestamp which is the final offset time.
         spawn_idx (int): Index of local maximum
-        merge_idx (int): Index of previous local minimum. If merge_idx == 0
+        merge_idx_prev (int): Index of previous local minimum. If merge_idx == 0
             event is considered the first event / local maximum.
+        scores_unique (1d np.ndarray):
+        inverse_indices (1d np.ndarray):
 
     Returns:
         onset_times (1d np.ndarray): onset times for current event when decsion
@@ -111,32 +117,27 @@ def _single_detection_onset_offset_times(
     >>> _single_detection_onset_offset_times(y, ts, 5, 4)
     (array([1., 1., 1., 1., 1., 1., 1.]), array([1. , 1. , 1. , 1.2, 1. , 1.2, 1. ]))
     """
-    pre_spawn_cummin_indices = np.unique(spawn_idx - cummin(scores[:spawn_idx+1][::-1])[1])
-    post_spawn_cummin_indices = np.unique(spawn_idx + cummin(scores[spawn_idx:])[1])
+    # pre_spawn_cummin_indices = np.unique(spawn_idx - cummin(scores[merge_idx:spawn_idx+1][::-1])[1])
+    pre_spawn_cummin_indices = np.arange(merge_idx_prev, spawn_idx + 1)
+    post_spawn_cummin_indices = spawn_idx + cummin(scores[spawn_idx:])[1]
+
     onset_time_indices = [0] + (pre_spawn_cummin_indices[:-1]+1).tolist()
     onset_times = timestamps[onset_time_indices]
     offset_time_indices = (post_spawn_cummin_indices[1:]).tolist()+[len(scores)]
     offset_times = timestamps[offset_time_indices]
 
-    onset_time_deltas = np.zeros_like(scores)
-    onset_time_deltas[pre_spawn_cummin_indices[:-1]] = onset_times[:-1] - onset_times[1:]
-    offset_time_deltas = np.zeros_like(scores)
-    offset_time_deltas[post_spawn_cummin_indices] = offset_times - np.concatenate(
+    onset_time_deltas = np.zeros_like(scores_unique)
+    onset_time_deltas[inverse_indices[pre_spawn_cummin_indices[:-1]]] = onset_times[:-1] - onset_times[1:]
+    offset_time_deltas = np.zeros_like(scores_unique)
+    offset_time_deltas[inverse_indices[post_spawn_cummin_indices]] = offset_times - np.concatenate(
         ([timestamps[spawn_idx]], offset_times[:-1]))
 
-    unique_scores, inverse_indices = np.unique(scores, return_inverse=True)
-    unique_score_onset_time_deltas = np.zeros_like(unique_scores)
-    np.add.at(unique_score_onset_time_deltas, inverse_indices, onset_time_deltas)
-    unique_score_onset_times = timestamps[spawn_idx] + np.cumsum(unique_score_onset_time_deltas[::-1])[::-1]
-    onset_times = unique_score_onset_times[inverse_indices]
-    unique_score_offset_time_deltas = np.zeros_like(unique_scores)
-    np.add.at(unique_score_offset_time_deltas, inverse_indices, offset_time_deltas)
-    unique_score_offset_times = timestamps[spawn_idx] + np.cumsum(unique_score_offset_time_deltas[::-1])[::-1]
-    offset_times = unique_score_offset_times[inverse_indices]
+    onset_times = timestamps[spawn_idx] + np.cumsum(onset_time_deltas[::-1])[::-1]
+    offset_times = timestamps[spawn_idx] + np.cumsum(offset_time_deltas[::-1])[::-1]
 
-    if merge_idx > 0:
-        onset_times[scores <= scores[merge_idx]] = timestamps[spawn_idx]
-        offset_times[scores <= scores[merge_idx]] = timestamps[spawn_idx]
+    if merge_idx_prev > 0:
+        onset_times[scores_unique <= scores[merge_idx_prev]] = timestamps[spawn_idx]
+        offset_times[scores_unique <= scores[merge_idx_prev]] = timestamps[spawn_idx]
     return onset_times, offset_times
 
 
@@ -154,6 +155,7 @@ def _onset_deltas(scores):
         falls below each of the scores, i.e., +1 at local maximums and -1 at
         local minimums in score signal.
 
+    >>> _onset_deltas(np.array([1,2,3,3,4,3]))
     """
     assert isinstance(scores, np.ndarray), scores
     prev_scores = np.concatenate(([-np.inf], scores[:-1]))

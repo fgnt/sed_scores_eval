@@ -17,7 +17,7 @@ def psds(
         scores, ground_truth, audio_durations, *,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6,
+        time_decimals=6, num_jobs=1,
 ):
     """Computes Polyphonic Sound Detection Score (PSDS) [1] using the exact
     and efficient computation approach proposed in [2].
@@ -62,6 +62,8 @@ def psds(
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns:
         psds (float): Polyphonic Sound Detection Score (PSDS), i.e., the area
@@ -78,7 +80,7 @@ def psds(
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
         unit_of_time=unit_of_time, max_efpr=max_efpr,
-        time_decimals=time_decimals,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     psd_roc_auc = staircase_auc(
         effective_tp_rate, effective_fp_rate, max_x=max_efpr)
@@ -93,7 +95,7 @@ def psd_roc(
         scores, ground_truth, audio_durations, *,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6,
+        time_decimals=6, num_jobs=1,
 ):
     """Computes Polyphonic Sound Detection ROC (PSD ROC) [1] using the exact
     and efficient computation approach proposed in [2].
@@ -138,6 +140,8 @@ def psd_roc(
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns:
         etpr (1d np.ndarray): effective True Positive Rates.
@@ -181,7 +185,7 @@ def psd_roc(
         scores=scores, ground_truth=ground_truth,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold,
-        time_decimals=time_decimals,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return psd_roc_from_intermediate_statistics(
         intermediate_stats,
@@ -349,8 +353,7 @@ def _single_class_roc_from_intermediate_statistics(
     effective_fp_rate = effective_fp_rate[sort_idx]
     tp_ratio = tp_ratio[sort_idx]
     scores = scores[sort_idx]
-    _, cummax_indices = cummax(tp_ratio)
-    cummax_indices = np.unique(cummax_indices)
+    cummax_indices = cummax(tp_ratio)[1]
     tp_ratio = tp_ratio[cummax_indices]
     effective_fp_rate = (
         effective_fp_rate[cummax_indices]

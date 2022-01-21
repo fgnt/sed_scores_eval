@@ -7,7 +7,7 @@ from sed_scores_eval.base_modules.io import parse_inputs
 
 def intermediate_statistics(
         scores, ground_truth, dtc_threshold, gtc_threshold,
-        cttc_threshold=None, time_decimals=6,
+        cttc_threshold=None, time_decimals=6, num_jobs=1
 ):
     """Compute intersection-based intermediate statistics over all audio files
     for all event classes and decision thresholds. See [1] for details about
@@ -39,6 +39,8 @@ def intermediate_statistics(
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
 
     Returns (dict of tuples): for each event class a tuple of 1d scores array
         and a dict of intermediate statistics with the following keys
@@ -62,7 +64,7 @@ def intermediate_statistics(
         intermediate_statistics_fn=statistics_fn,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold,
-        time_decimals=time_decimals,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     n_ref, t_ref = event_counts_and_durations(
         ground_truth, event_classes=multi_label_statistics.keys()

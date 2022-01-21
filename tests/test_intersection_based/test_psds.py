@@ -39,7 +39,7 @@ def test_psds_vs_psds_eval(dataset, params):
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100.,
-        time_decimals=30,
+        time_decimals=30, num_jobs=8,
     )
 
     score_transform = test_data_dir / 'validation' / 'score_transform.tsv'

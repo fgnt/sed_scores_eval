@@ -38,6 +38,7 @@ def test_collar_based_fscore_vs_sed_eval(dataset, threshold, collar):
         onset_collar=collar, offset_collar=collar,
         offset_collar_rate=offset_collar_rate,
         time_decimals=time_decimals,
+        num_jobs=8,
     )
     sed_eval_metrics = collar_based.reference.metrics(
         scores=test_data_dir / dataset / "scores",

@@ -17,9 +17,11 @@ def cummin(array):
     (array([0., 0., 0.]), array([0, 0, 0]))
     """
     cummin_values = np.minimum.accumulate(array)
-    _, unique_value_indices, inverse_indices = np.unique(
-        cummin_values, return_index=True, return_inverse=True)
-    cummin_indices = unique_value_indices[inverse_indices]
+    cummin_indices = np.concatenate((
+        [0],
+        np.arange(1, len(array))[cummin_values[1:] < cummin_values[:-1]]
+    ))
+    # _, cummin_indices = np.unique(cummin_values, return_index=True)
     return cummin_values, cummin_indices
 
 
@@ -39,9 +41,11 @@ def cummax(array):
     (array([0., 0., 0.]), array([0, 0, 0]))
     """
     cummax_values = np.maximum.accumulate(array)
-    _, unique_value_indices, inverse_indices = np.unique(
-        cummax_values, return_index=True, return_inverse=True)
-    cummax_indices = unique_value_indices[inverse_indices]
+    cummax_indices = np.concatenate((
+        [0],
+        np.arange(1, len(array))[cummax_values[1:] > cummax_values[:-1]]
+    ))
+    # _, cummax_indices = np.unique(cummax_values, return_index=True)
     return cummax_values, cummax_indices
 
 

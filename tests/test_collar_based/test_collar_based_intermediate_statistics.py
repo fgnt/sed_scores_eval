@@ -33,7 +33,8 @@ def test_paper_example(t_step):
 
 
 @pytest.mark.parametrize("t_step", [.2, 1.])
-def test_accumulated_statistics(t_step):
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_accumulated_statistics(t_step, num_jobs):
     detection_scores = np.array([.3,.4,.5,.6,.7,.6,.5,.4,.3])
     timestamps = np.arange(10)*t_step
     scores = pd.DataFrame(
@@ -47,6 +48,7 @@ def test_accumulated_statistics(t_step):
             '2': [(2.*t_step, 7.*t_step, 'a')]
         },
         onset_collar=t_step, offset_collar=t_step,
+        num_jobs=num_jobs,
     )['a']
     expected_change_point_scores = [.3,.6,.7,np.inf]
     expected_true_positives = [0,2,0,0]
