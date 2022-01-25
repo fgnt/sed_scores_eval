@@ -345,7 +345,7 @@ def _single_class_roc_from_intermediate_statistics(
             cts_i / t_ref_i
             for cts_i, t_ref_i in zip(stats['cts'].T, stats['t_ref_other'])
         ]
-        effective_fp_rate = fp_rate + alpha_ct * np.mean(ct_rates, axis=0) * len(ct_rates)/(len(ct_rates)+1)
+        effective_fp_rate = fp_rate + alpha_ct * np.mean(ct_rates, axis=0)
     sort_idx = sorted(
         np.arange(len(effective_fp_rate)).tolist(),
         key=lambda i: (effective_fp_rate[i], tp_ratio[i])
