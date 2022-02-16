@@ -19,4 +19,7 @@ def get_curve_idx_for_threshold(scores, threshold):
         )
     sort_idx = np.argsort(scores)
     idx = get_first_index_where(scores[sort_idx], 'gt', threshold)
+    if idx == len(sort_idx):
+        assert scores[sort_idx[-1]] == np.inf, scores[sort_idx[-1]]
+        idx = -1
     return sort_idx[idx]

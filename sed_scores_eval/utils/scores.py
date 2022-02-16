@@ -38,7 +38,7 @@ def create_score_dataframe(scores, timestamps, event_classes):
     if timestamps.shape != (len(scores)+1,):
         raise ValueError(
             f'timestamps must be one-dimensional and have length '
-            f'len(scores)+1 ({len(scores) + 1}) but timestamps with shape'
+            f'len(scores)+1 ({len(scores) + 1}) but timestamps with shape '
             f'{timestamps.shape} was given.'
         )
 
@@ -50,7 +50,7 @@ def create_score_dataframe(scores, timestamps, event_classes):
     if len(event_classes) != scores.shape[1]:
         raise ValueError(
             f'length of event_classes ({len(event_classes)}) does not match '
-            f'scores.shape[1] ({scores.shape[1]}).'
+            f'scores.shape[1]. scores.shape: {scores.shape}.'
         )
     if not all([isinstance(c, (str, int)) for c in event_classes]):
         raise ValueError(

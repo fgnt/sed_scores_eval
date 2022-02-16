@@ -45,6 +45,14 @@ def intermediate_statistics(
         audio_durations = Path(audio_durations)
         assert audio_durations.is_file(), audio_durations
         audio_durations = read_audio_durations(audio_durations)
+
+    if not audio_durations.keys() == set(audio_ids):
+        raise ValueError(
+            f'audio_durations audio ids do not match audio ids in scores. '
+            f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
+            f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
+        )
+
     _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
     single_label_ground_truths = multi_label_to_single_label_ground_truths(
         ground_truth, event_classes)
