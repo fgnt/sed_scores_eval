@@ -1,19 +1,22 @@
 import numpy as np
-from sed_scores_eval.utils.array_ops import cummin
+import pandas as pd
 from einops import rearrange
+from sed_scores_eval.utils.array_ops import cummin
+from sed_scores_eval.utils.scores import validate_score_dataframe
 
 
-def detection_onset_offset_times(scores, timestamps):
-    """get onset and offset times for event detections. Here, the number of
-    event detections is given by the number of local maximums in the score
-    signal with events being spawned when the decision threshold falls below
-    the local maximum. However, usually only a subset of these events is active
-    simultanously while others are inactive, e.g., because a certain threshold
-    does not yet fall below all local maximums. For inactive events we return
-    offset_time = onset_time. Further, when the decision threshold falls below
-    a local minimum, two separate events merge into a single event. In this
-    case, we keep the earlier event active with corresponding onset and offset
-    times, while the later event is set inactive with offset_time = onset_time.
+def onset_offset_curves(scores, timestamps):
+    """get onset and offset times of event detections for various decision
+    thresholds. Here, the number of event detections is given by the number of
+    local maximums in the score signal with events being spawned when the
+    decision threshold falls below the local maximum. However, usually only a
+    subset of these events is active simultanously while others are inactive,
+    e.g., because a certain threshold does not yet fall below all local
+    maximums. For inactive events we return offset_time = onset_time. Further,
+    when the decision threshold falls below a local minimum, two separate
+    events merge into a single event. In this case, we keep the earlier event
+    active with corresponding onset and offset times, while the later event is
+    set inactive with offset_time = onset_time.
 
     Args:
         scores (1d np.ndarray): SED scores for a single event class
@@ -29,20 +32,20 @@ def detection_onset_offset_times(scores, timestamps):
             each decsion threshold that falls below one of the unique scores.
             Shape is (number of unique scores, number of events/local maximums).
 
-    >>> y = np.array([.4,1.,.6,1.,.4])
+    >>> y = np.array([.4,1.,.6,.6,1.,1.,.4])
     >>> ts = np.linspace(0., len(y)*.2, len(y) + 1)  # each score has width of 200ms
-    >>> y, t_on, t_off = detection_onset_offset_times(y, ts)
+    >>> y, t_on, t_off = onset_offset_curves(y, ts)
     >>> y
     array([0.4, 0.6, 1. ])
     >>> np.stack((t_on, t_off), axis=-1)
-    array([[[0. , 1. ],
-            [0.6, 0.6]],
+    array([[[0. , 1.4],
+            [0.8, 0.8]],
     <BLANKLINE>
-           [[0.2, 0.8],
-            [0.6, 0.6]],
+           [[0.2, 1.2],
+            [0.8, 0.8]],
     <BLANKLINE>
            [[0.2, 0.4],
-            [0.6, 0.8]]])
+            [0.8, 1.2]]])
     """
     scores = np.asanyarray(scores)
     if not scores.ndim == 1:
@@ -72,7 +75,7 @@ def detection_onset_offset_times(scores, timestamps):
             current_merge_idx = 0
         else:
             current_merge_idx = event_merge_indices[i-1]
-        onset_offset_times.append(_single_detection_onset_offset_times(
+        onset_offset_times.append(_single_detection_onset_offset_curve(
             scores, timestamps, current_spawn_idx, current_merge_idx,
             scores_unique, inverse_indices
         ))
@@ -82,7 +85,7 @@ def detection_onset_offset_times(scores, timestamps):
     return scores_unique, onset_times, offset_times
 
 
-def _single_detection_onset_offset_times(
+def _single_detection_onset_offset_curve(
         scores, timestamps, spawn_idx, merge_idx_prev,
         scores_unique, inverse_indices,
 ):
@@ -110,11 +113,11 @@ def _single_detection_onset_offset_times(
 
     >>> y = np.array([.4,1.,.1,.6,.5,.6,.4,])
     >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)  # each score has width of 200ms
-    >>> _single_detection_onset_offset_times(y, ts, 1, 0)
+    >>> _single_detection_onset_offset_curve(y, ts, 1, 0)
     (array([0. , 0.2, 0. , 0.2, 0.2, 0.2, 0. ]), array([0.4, 0.4, 1.4, 0.4, 0.4, 0.4, 0.4]))
-    >>> _single_detection_onset_offset_times(y, ts, 3, 2)
+    >>> _single_detection_onset_offset_curve(y, ts, 3, 2)
     (array([0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]), array([1.4, 0.6, 0.6, 0.8, 1.2, 0.8, 1.4]))
-    >>> _single_detection_onset_offset_times(y, ts, 5, 4)
+    >>> _single_detection_onset_offset_curve(y, ts, 5, 4)
     (array([1., 1., 1., 1., 1., 1., 1.]), array([1. , 1. , 1. , 1.2, 1. , 1.2, 1. ]))
     """
     # pre_spawn_cummin_indices = np.unique(spawn_idx - cummin(scores[merge_idx:spawn_idx+1][::-1])[1])
@@ -164,3 +167,42 @@ def _onset_deltas(scores):
         (scores > prev_scores).astype(np.int)
         - (next_scores > scores).astype(np.int)
     )
+
+
+def scores_to_event_list(scores, thresholds, event_classes=None):
+    if not isinstance(scores, pd.DataFrame) and hasattr(scores, 'keys'):
+        assert callable(scores.keys)
+        keys = sorted(scores.keys())
+        _, event_classes = validate_score_dataframe(
+            scores[keys[0]], event_classes=event_classes)
+        if isinstance(thresholds, dict):
+            thresholds = np.array([
+                thresholds[event_class] for event_class in event_classes])
+        return {
+            key: scores_to_event_list(
+                scores[key], thresholds, event_classes=event_classes)
+            for key in keys
+        }
+    timestamps, event_classes = validate_score_dataframe(
+        scores, event_classes=event_classes)
+    onset_times = scores['onset'].to_numpy()
+    offset_times = scores['offset'].to_numpy()
+    scores = scores[event_classes].to_numpy()
+    if isinstance(thresholds, dict):
+        thresholds = np.array([
+            thresholds[event_class] for event_class in event_classes])
+    detections = scores > thresholds
+    zeros = np.zeros_like(detections[:1, :])
+    detections = np.concatenate((zeros, detections, zeros), axis=0).astype(np.float)
+    change_points = detections[1:] - detections[:-1]
+    event_list = []
+    for k in np.argwhere(np.abs(change_points).max(0) > .5).flatten():
+        onsets = np.argwhere(change_points[:, k] > .5).flatten()
+        offsets = np.argwhere(change_points[:, k] < -.5).flatten()
+        assert len(onsets) == len(offsets) > 0
+        for onset, offset in zip(onsets, offsets):
+            event_list.append((
+                onset_times[onset], offset_times[offset-1],
+                event_classes[k]
+            ))
+    return sorted(event_list)

@@ -8,6 +8,7 @@ from sed_scores_eval.utils.scores import (
     validate_score_dataframe,
     get_unique_thresholds,
 )
+from sed_scores_eval.base_modules.detection import scores_to_event_list
 from sed_scores_eval.base_modules.ground_truth import (
     onset_offset_times_to_indices
 )
@@ -85,6 +86,10 @@ def write_sed_scores(scores, filepath, *, timestamps=None, event_classes=None):
         if timestamps is None:
             raise ValueError(
                 f'timestamps must not be None if scores is np.ndarray'
+            )
+        if event_classes is None:
+            raise ValueError(
+                f'event_classes must not be None if scores is np.ndarray'
             )
         scores = create_score_dataframe(scores, timestamps, event_classes)
     validate_score_dataframe(scores, timestamps=timestamps, event_classes=event_classes)
@@ -256,29 +261,11 @@ def write_detection(
             fid.write('filename\tonset\toffset\tevent_label\n')
 
     with filepath.open('a') as fid:
-        for key in keys:
-            scores_i = scores[key]
-            validate_score_dataframe(scores_i, event_classes=event_classes)
-            onset_times = scores_i['onset'].to_numpy()
-            offset_times = scores_i['offset'].to_numpy()
-            scores_i = scores_i[event_classes].to_numpy()
-            detections = scores_i > threshold
-            zeros = np.zeros_like(detections[:1, :])
-            detections = np.concatenate((zeros, detections, zeros), axis=0).astype(np.float)
-            change_points = detections[1:] - detections[:-1]
-            event_list = []
-            for k in np.argwhere(np.abs(change_points).max(0) > .5).flatten():
-                onsets = np.argwhere(change_points[:, k] > .5).flatten()
-                offsets = np.argwhere(change_points[:, k] < -.5).flatten()
-                assert len(onsets) == len(offsets) > 0
-                for onset, offset in zip(onsets, offsets):
-                    event_list.append((
-                        onset_times[onset], offset_times[offset-1],
-                        event_classes[k]
-                    ))
-            event_list = sorted(event_list)
+        event_lists = scores_to_event_list(scores, thresholds=threshold)
+        for key, event_list in event_lists.items():
             for t_on, t_off, event_label in event_list:
-                fid.write(f'{key}.{audio_format}\t{t_on}\t{t_off}\t{event_label}\n')
+                fid.write(
+                    f'{key}.{audio_format}\t{t_on}\t{t_off}\t{event_label}\n')
 
 
 def write_detections_for_multiple_thresholds(

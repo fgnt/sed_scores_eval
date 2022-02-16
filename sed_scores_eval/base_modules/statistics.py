@@ -2,7 +2,7 @@ import numpy as np
 import multiprocessing
 from sed_scores_eval.utils.scores import validate_score_dataframe
 from sed_scores_eval.base_modules.ground_truth import multi_label_to_single_label_ground_truths
-from sed_scores_eval.base_modules.detection import detection_onset_offset_times
+from sed_scores_eval.base_modules.detection import onset_offset_curves
 from sed_scores_eval.base_modules.io import parse_inputs
 
 
@@ -104,7 +104,7 @@ def accumulated_intermediate_statistics(
             for c, class_name in enumerate(event_classes):
                 (
                     unique_scores, detection_onset_times, detection_offset_times
-                ) = detection_onset_offset_times(scores_for_key[:, c], timestamps)
+                ) = onset_offset_curves(scores_for_key[:, c], timestamps)
                 stats = intermediate_statistics_fn(
                     detection_onset_times=detection_onset_times,
                     detection_offset_times=detection_offset_times,
