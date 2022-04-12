@@ -46,7 +46,7 @@ def intermediate_statistics(
         assert audio_durations.is_file(), audio_durations
         audio_durations = read_audio_durations(audio_durations)
 
-    if not audio_durations.keys() == set(audio_ids):
+    if audio_durations is not None and not audio_durations.keys() == set(audio_ids):
         raise ValueError(
             f'audio_durations audio ids do not match audio ids in scores. '
             f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
