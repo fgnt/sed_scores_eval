@@ -127,18 +127,17 @@ def statistics_fn(
     det_crit = detection_offset_times > detection_onset_times
     num_detections = det_crit.sum(-1)
 
-    onset_dist = np.abs(detection_onset_times[..., None] - target_onset_times)
+    onset_dist = detection_onset_times[..., None] - target_onset_times
     onset_crit = np.round(
-        onset_dist - onset_collar, decimals=time_decimals) <= 0.
+        np.abs(onset_dist) - onset_collar, decimals=time_decimals) <= 0.
 
     offset_collars = np.maximum(
         offset_collar,
         offset_collar_rate * (target_offset_times-target_onset_times),
     )
-    offset_dist = np.abs(
-        detection_offset_times[..., None] - target_offset_times)
+    offset_dist = detection_offset_times[..., None] - target_offset_times
     offset_crit = np.round(
-        offset_dist - offset_collars, decimals=time_decimals) <= 0.
+        np.abs(offset_dist) - offset_collars, decimals=time_decimals) <= 0.
     hit_mat = det_crit[..., None] * onset_crit * offset_crit
     assert np.logical_or(hit_mat == 0, hit_mat == 1).all(), np.unique(hit_mat.flatten())
     invalid_detections = np.logical_or(
@@ -158,4 +157,11 @@ def statistics_fn(
             hit_mat[idx][det_idx, gt_idx] = 1
     tps = hit_mat.sum((1, 2))
     fps = num_detections - tps
-    return {'tps': tps, 'fps': fps}
+    tp_onset_dist = (hit_mat * onset_dist).sum((1, 2))
+    tp_offset_dist = (hit_mat * offset_dist).sum((1, 2))
+    return {
+        'tps': tps,
+        'fps': fps,
+        'tp_onset_dist_sum': tp_onset_dist,
+        'tp_offset_dist_sum': tp_offset_dist,
+    }
