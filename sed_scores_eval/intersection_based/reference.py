@@ -67,12 +67,25 @@ def approximate_psds(
     """
     import tempfile
     from psds_eval import PSDSEval
-    assert isinstance(ground_truth, (str, Path)), type(ground_truth)
-    assert isinstance(audio_durations, (str, Path)), type(audio_durations)
     scores, _, keys = parse_inputs(scores, ground_truth)
-    ground_truth = pd.read_csv(ground_truth, sep="\t")
+    if isinstance(ground_truth, dict):
+        ground_truth = [(f"{key}.wav", *gt) for key in keys for gt in ground_truth[key]]
+        ground_truth = pd.DataFrame(
+            ground_truth,
+            columns=['filename', 'onset', 'offset', 'event_label']
+        )
+    else:
+        assert isinstance(ground_truth, (str, Path)), type(ground_truth)
+        ground_truth = pd.read_csv(ground_truth, sep="\t")
     audio_format = ground_truth['filename'][0].split('.')[-1]
-    audio_durations = pd.read_csv(audio_durations, sep="\t")
+    if isinstance(audio_durations, dict):
+        audio_durations = [(f"{key}.wav", audio_durations[key]) for key in keys]
+        audio_durations = pd.DataFrame(
+            audio_durations, columns=['filename', 'duration']
+        )
+    else:
+        assert isinstance(audio_durations, (str, Path)), type(audio_durations)
+        audio_durations = pd.read_csv(audio_durations, sep="\t")
     _, event_classes = validate_score_dataframe(
         scores[keys[0]])
     psds_eval = PSDSEval(
