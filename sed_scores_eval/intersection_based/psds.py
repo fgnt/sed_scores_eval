@@ -257,13 +257,20 @@ def psd_roc_from_intermediate_statistics(
 
     tp_ratios, efp_rates, _ = list(zip(*single_class_psd_rocs.values()))
     overall_effective_fp_rates = np.unique(np.sort(np.concatenate(efp_rates)))
-    interpolated_tp_ratios = [
-        interp1d(
-            efpr, tpr, kind='previous',
-            bounds_error=False, fill_value=(0, tpr[-1])
-        )(overall_effective_fp_rates)
-        for tpr, efpr in zip(tp_ratios, efp_rates)
-    ]
+    interpolated_tp_ratios = []
+    for tpr, efpr in zip(tp_ratios, efp_rates):
+        if len(tpr) == 1:
+            # interp1d expects at least length of 2, which, however, isn't
+            # necessary with bounds_error=False and fill_values. Therefore,
+            # simply repeat arrays if length == 1
+            tpr = tpr.repeat(2)
+            efpr = efpr.repeat(2)
+        interpolated_tp_ratios.append(
+            interp1d(
+                efpr, tpr, kind='previous',
+                bounds_error=False, fill_value=(0, tpr[-1])
+            )(overall_effective_fp_rates)
+        )
     mu_tp = np.mean(interpolated_tp_ratios, axis=0)
     sigma_tp = np.std(interpolated_tp_ratios, axis=0)
     effective_tp_rate = mu_tp - alpha_st * sigma_tp
