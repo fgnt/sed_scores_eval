@@ -1,4 +1,7 @@
 # sed_scores_eval
+
+![GitHub Actions](https://github.com/fgnt/sed_scores_eval/actions/workflows/pytest.yml/badge.svg)
+
 sed_scores_eval is a package for the efficient (threshold-independent)
 evaluation of Sound Event Detection (SED) systems based on the SED system's
 soft classification scores as described in
