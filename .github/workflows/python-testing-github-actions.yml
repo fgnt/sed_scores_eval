@@ -1,4 +1,4 @@
-name: Python Testing Sed_Scores_Eval
+name: pytest
 
 on: 
   push:
