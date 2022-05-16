@@ -125,7 +125,7 @@ def fscore_curve(
 def fscore(
         scores, ground_truth, threshold, *,
         onset_collar, offset_collar, offset_collar_rate=0., beta=1.,
-        time_decimals=6, num_jobs=1,
+        return_onset_offset_dist_sum=False, time_decimals=6, num_jobs=1,
 ):
     """Get collar-based f-score with corresponding precision, recall and
     intermediate statistics for a specific decision threshold
@@ -148,6 +148,9 @@ def fscore(
                 offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
             )
         beta: \beta parameter for f-score computation
+        return_onset_offset_dist_sum: If True, return summed distances between
+            predicted and true on-/offsets (for true positive predictions),
+            which allows to compute and compensate biases.
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, detections with an onset or offset right on the
             boundary of the collar may be falsely counted as false detection
@@ -170,6 +173,7 @@ def fscore(
         scores=scores, ground_truth=ground_truth,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
+        return_onset_offset_dist_sum=return_onset_offset_dist_sum,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return single_fscore_from_intermediate_statistics(

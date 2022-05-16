@@ -8,7 +8,7 @@ from sed_scores_eval.base_modules.io import parse_inputs
 
 def intermediate_statistics(
     scores, ground_truth, onset_collar, offset_collar, offset_collar_rate=0.,
-    time_decimals=6, num_jobs=1,
+    return_onset_offset_dist_sum=False, time_decimals=6, num_jobs=1,
 ):
     """Compute collar-based intermediate statistics over all audio files for
     all event classes and decision thresholds. See [1] for details about
@@ -40,6 +40,9 @@ def intermediate_statistics(
             offset_collar_for_gt_event = max(
                 offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
             )
+        return_onset_offset_dist_sum: If True, return summed distances between
+            predicted and true on-/offsets (for true positive predictions),
+            which allows to compute and compensate biases.
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, detections with an onset or offset right on the
             boundary of the collar may be falsely counted as false detection
@@ -63,6 +66,7 @@ def intermediate_statistics(
         intermediate_statistics_fn=statistics_fn,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
+        return_onset_offset_dist_sum=return_onset_offset_dist_sum,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
     n_ref, _ = event_counts_and_durations(
@@ -79,6 +83,7 @@ def statistics_fn(
     target_onset_times, target_offset_times,
     other_onset_times, other_offset_times,
     onset_collar, offset_collar, offset_collar_rate=0.,
+    return_onset_offset_dist_sum=False,
     time_decimals=6,
 ):
     """Compute collar-based intermediate statistics for a single audio and
@@ -112,6 +117,9 @@ def statistics_fn(
             offset_collar_for_gt_event = max(
                 offset_collar, offset_collar_rate*length_of_gt_event_in_seconds
             )
+        return_onset_offset_dist_sum: If True, return summed distances between
+            predicted and true on-/offsets (for true positive predictions),
+            which allows to compute and compensate biases.
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, detections with an onset or offset right on the
             boundary of the collar may be falsely counted as false detection
@@ -157,11 +165,16 @@ def statistics_fn(
             hit_mat[idx][det_idx, gt_idx] = 1
     tps = hit_mat.sum((1, 2))
     fps = num_detections - tps
-    tp_onset_dist = (hit_mat * onset_dist).sum((1, 2))
-    tp_offset_dist = (hit_mat * offset_dist).sum((1, 2))
+    if not return_onset_offset_dist_sum:
+        return {
+            'tps': tps,
+            'fps': fps,
+        }
+    onset_dist = (hit_mat * onset_dist).sum((1, 2))
+    offset_dist = (hit_mat * offset_dist).sum((1, 2))
     return {
         'tps': tps,
         'fps': fps,
-        'tp_onset_dist_sum': tp_onset_dist,
-        'tp_offset_dist_sum': tp_offset_dist,
+        'onset_dist_sum': onset_dist,
+        'offset_dist_sum': offset_dist,
     }
