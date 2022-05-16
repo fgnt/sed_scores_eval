@@ -1,0 +1,45 @@
+name: pytest
+
+on: 
+  push:
+#  activate for time scheduled testing, in this example at 5:30 and 17:30 o'clock
+#  schedule:
+#    - cron:  '30 5,17 * * *'
+
+jobs:
+  test-on-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{matrix.python}}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{matrix.python}}
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --editable .
+        # if you have a requirements textfile: 
+        # pip install -r requirements.txt
+        pip install numpy scipy Cython pandas einops sed_eval psds_eval
+        sudo apt-get install libsndfile1
+    - name: Lint with flake8
+      run: |
+        conda install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Test with pytest
+      run: |
+        conda install pytest 
+        pytest
