@@ -164,8 +164,8 @@ def _onset_deltas(scores):
     prev_scores = np.concatenate(([-np.inf], scores[:-1]))
     next_scores = np.concatenate((scores[1:], [-np.inf]))
     return (
-        (scores > prev_scores).astype(np.int)
-        - (next_scores > scores).astype(np.int)
+        (scores > prev_scores).astype(int)
+        - (next_scores > scores).astype(int)
     )
 
 
@@ -193,7 +193,7 @@ def scores_to_event_list(scores, thresholds, event_classes=None):
             thresholds[event_class] for event_class in event_classes])
     detections = scores > thresholds
     zeros = np.zeros_like(detections[:1, :])
-    detections = np.concatenate((zeros, detections, zeros), axis=0).astype(np.float)
+    detections = np.concatenate((zeros, detections, zeros), axis=0).astype(float)
     change_points = detections[1:] - detections[:-1]
     event_list = []
     for k in np.argwhere(np.abs(change_points).max(0) > .5).flatten():
