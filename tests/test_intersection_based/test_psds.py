@@ -13,14 +13,19 @@ from sed_scores_eval import intersection_based, io, package_dir
             'gtc_threshold': .7,
             'cttc_threshold': None,
             'alpha_ct': .0,
-            'alpha_st': 1 / np.sqrt(10 - 1) - 1e-9,
+            'alpha_st': 1 / np.sqrt(10 - 1),
+            # choose alpha_st <= 1/sqrt(K-1), where K is the number of classes,
+            # to ensure that the true PSD-ROC is always greater than an
+            # approximation. With alpha_st > 1/sqrt(K-1) an increased TPR for
+            # one of the classes may cause the effective TPR over all classes
+            # to decrease.
         },
         {
             'dtc_threshold': .1,
             'gtc_threshold': .1,
             'cttc_threshold': .3,
             'alpha_ct': .5,
-            'alpha_st': 1 / np.sqrt(10 - 1) - 1e-9,
+            'alpha_st': 1 / np.sqrt(10 - 1),
         },
     ]
 )
@@ -38,8 +43,7 @@ def test_psds_vs_psds_eval(dataset, params):
         gtc_threshold=params['gtc_threshold'],
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
-        unit_of_time='hour', max_efpr=100.,
-        time_decimals=30, num_jobs=8,
+        unit_of_time='hour', max_efpr=100., num_jobs=8, time_decimals=6,
     )
 
     score_transform = test_data_dir / 'validation' / 'score_transform.tsv'
@@ -78,6 +82,7 @@ def test_psds_vs_psds_eval(dataset, params):
         assert (tpr_true >= tpr_approx).all(), (
             class_name,
             np.sum(tpr_true < tpr_approx),
+            len(tpr_true),
             (tpr_approx - tpr_true).max(),
         )
 

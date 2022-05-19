@@ -141,21 +141,22 @@ def statistics_fn(
     )
     total_intersection_with_gt_events = np.round(
         np.sum(ground_truth_intersections, axis=-1), decimals=time_decimals)
-    detection_lengths = np.round(
-        detection_offset_times-detection_onset_times, decimals=time_decimals)
-    detection_lengths[detection_lengths == 0.] = 1e-12
-    dtc_scores = total_intersection_with_gt_events / detection_lengths
-    dtc = dtc_scores >= dtc_threshold
+    detection_lengths = detection_offset_times - detection_onset_times
+    dtc = (
+        total_intersection_with_gt_events
+        >= np.round(dtc_threshold * detection_lengths, decimals=time_decimals)
+    ) * det_crit
     num_relevant_detections = dtc.sum(-1)
     fps = num_detections - num_relevant_detections
     total_intersection_with_relevant_detections = np.round(
         np.sum(dtc[..., None] * ground_truth_intersections, axis=-2),
         decimals=time_decimals
     )
-    gt_lengths = np.round(
-        target_offset_times-target_onset_times, decimals=time_decimals)
-    gtc_scores = total_intersection_with_relevant_detections / gt_lengths
-    gtc = gtc_scores >= gtc_threshold
+    gt_lengths = target_offset_times - target_onset_times
+    gtc = (
+        total_intersection_with_relevant_detections
+        >= np.round(gtc_threshold * gt_lengths, decimals=time_decimals)
+    )
     tps = gtc.sum(-1)
     if cttc_threshold is None:
         cts = np.zeros_like(tps)
@@ -168,13 +169,13 @@ def statistics_fn(
                 0.,
             )
             total_intersection_with_other_gt_events = np.round(
-                np.sum((1-dtc[..., None])*other_class_intersections, axis=-1),
+                np.sum((1-dtc[..., None]) * other_class_intersections, axis=-1),
                 decimals=time_decimals
             )
-            cttc_scores = (
-                total_intersection_with_other_gt_events / detection_lengths
-            )
-            cttc = cttc_scores >= cttc_threshold
+            cttc = (
+                total_intersection_with_other_gt_events
+                >= np.round(cttc_threshold * detection_lengths, decimals=time_decimals)
+            ) * det_crit
             cts.append(cttc.sum(-1))
         cts = np.array(cts).T
     return {'tps': tps, 'fps': fps, 'cts': cts}
