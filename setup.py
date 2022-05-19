@@ -73,6 +73,7 @@ st.setup(
         'scipy',
         'pathlib',
         'lazy_dataset',
+        'einops',
     ],
 
     # List additional groups of dependencies here (e.g. development
