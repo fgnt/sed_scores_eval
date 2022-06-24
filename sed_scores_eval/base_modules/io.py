@@ -116,7 +116,7 @@ def lazy_sed_scores_loader(dir_path):
     score_files = {}
     for file in sorted(dir_path.iterdir()):
         if not file.is_file() or not file.name.endswith('.tsv'):
-            raise ValueError('dir_path must only contain tsv files.')
+            raise ValueError(f'dir_path must only contain tsv files but contains {file}')
         score_files[file.name[:-len('.tsv')]] = str(file)
     scores = lazy_dataset.new(score_files)
     return scores.map(read_sed_scores)
@@ -325,8 +325,8 @@ def write_detections_for_multiple_thresholds(
 
 def write_score_transform(
         scores, ground_truth, filepath,
-        num_breakpoints=50, min_score=0., max_score=1.,
-        classwise_transform=False, negatives_ratio=.1,
+        num_breakpoints=10, min_score=0., max_score=1.,
+        classwise_transform=False,
 ):
     """compute and save a piecewise-linear score transform which is supposed
     to uniformly distribute scores from within ground truth events between 0
@@ -349,34 +349,26 @@ def write_score_transform(
         max_score: the last value (where y=x) in the transformation.
         classwise_transform: If True, use separate transformations for scores
             from different event classes
-        negatives_ratio: The proportion of scores from negatively labeled
-            frames that is included in computation of the transformation
 
     """
     scores, ground_truth, keys = parse_inputs(scores, ground_truth)
-    scores_at_positives = {}
-    scores_at_negatives = {}
+    scores_dict = {}
     event_classes = None
     for key in keys:
         scores_for_key = scores[key]
-        _, event_classes = validate_score_dataframe(scores_for_key, event_classes=event_classes)
-        onset_times = scores_for_key['onset'].to_numpy()
-        offset_times = scores_for_key['offset'].to_numpy()
-        timestamps = np.concatenate((onset_times, offset_times[-1:]))
-        for event_class in event_classes:
-            if event_class not in scores_at_negatives:
-                scores_at_negatives[event_class] = []
-            scores_at_negatives[event_class].append(
-                scores_for_key[event_class].to_numpy().copy())
+        timestamps, event_classes = validate_score_dataframe(
+            scores_for_key, event_classes=event_classes)
         for (t_on, t_off, event_label) in ground_truth[key]:
+            if event_label not in scores_dict:
+                scores_dict[event_label] = []
             idx_on, idx_off = onset_offset_times_to_indices(
                 onset_time=t_on, offset_time=t_off, timestamps=timestamps
             )
-            if event_label not in scores_at_positives:
-                scores_at_positives[event_label] = []
-            scores_at_positives[event_label].append(
-                scores_for_key[event_label].to_numpy()[idx_on:idx_off])
-            scores_at_negatives[event_label][-1][idx_on:idx_off] = min_score
+            scores_dict[event_label].append(scores_for_key[event_label][idx_on:idx_off])
+    scores_dict = {
+        event_class: np.concatenate(scores_dict[event_class])
+        for event_class in event_classes
+    }
     step = (max_score-min_score)/num_breakpoints
     output_scores = np.concatenate((
         [min_score],
@@ -386,41 +378,23 @@ def write_score_transform(
     output_scores = np.round(output_scores, decimals=12)
     score_transform = [output_scores]
 
-    def _breakpoints_from_scores(scores_pos, scores_neg):
-        scores_k = np.unique(np.concatenate(scores_pos))
-        if negatives_ratio > 0:
-            scores_neg = np.unique(np.concatenate(scores_neg))
-            subsample_idx = np.linspace(0, len(scores_neg) - 1, int(len(scores_k) * negatives_ratio)).astype(int)
-            scores_neg = scores_neg[subsample_idx]
-            scores_k = np.unique(np.concatenate((scores_neg, scores_k)))
-        assert len(scores_k) >= num_breakpoints+1, (len(scores_k), num_breakpoints)
-        step = (len(scores_k) - 1) / num_breakpoints
-        breakpoint_indices = (
-            np.linspace(0, len(scores_k) - 1, num_breakpoints, endpoint=False)
-            + step/2
-        ).astype(np.int)
-        assert (scores_k[breakpoint_indices] >= min_score).all(), (
-            np.min(scores_k[breakpoint_indices]), min_score)
-        assert (scores_k[breakpoint_indices] <= max_score).all(), (
-            np.max(scores_k[breakpoint_indices]), max_score)
-        breakpoints = np.concatenate((
-            [min_score], scores_k[breakpoint_indices], [max_score]
+    def get_breakpoints(score_arr):
+        score_arr = np.sort(score_arr[score_arr > .0])
+        breakpoints = score_arr[np.linspace(0, len(score_arr), num_breakpoints+1, dtype=int)[:-1]]
+        return np.concatenate((
+            [min_score], breakpoints, [max_score]
         ))
-        return breakpoints
 
     if classwise_transform:
         for event_class in event_classes:
-            score_transform.append(_breakpoints_from_scores(
-                scores_at_positives[event_class], scores_at_negatives[event_class]
+            score_transform.append(get_breakpoints(
+                scores_dict[event_class]
             ))
     else:
-        scores_pos = []
-        scores_neg = []
-        for event_class in event_classes:
-            scores_pos.extend(scores_at_positives[event_class])
-            scores_neg.extend(scores_at_negatives[event_class])
+        score_arr = np.concatenate([
+            scores_dict[event_class] for event_class in event_classes])
         score_transform.extend(
-            len(event_classes) * [_breakpoints_from_scores(scores_pos, scores_neg)]
+            len(event_classes) * [get_breakpoints(score_arr)]
         )
     score_transform = pd.DataFrame(
         np.array(score_transform).T, columns=['y', *event_classes])
