@@ -74,6 +74,7 @@ st.setup(
         'pathlib',
         'lazy_dataset',
         'einops',
+        'sed_eval',
     ],
 
     # List additional groups of dependencies here (e.g. development
