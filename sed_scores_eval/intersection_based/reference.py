@@ -74,7 +74,7 @@ def approximate_psds(
         dir_path = Path(tmp_dir)
         write_detections_for_multiple_thresholds(
             scores, thresholds, dir_path, audio_format=audio_format,
-            score_transform=score_transform,
+            score_transform=score_transform, threshold_decimals=16,
         )
         return approximate_psds_from_detections_dir(
             dir_path, ground_truth, audio_durations, thresholds,
@@ -82,6 +82,7 @@ def approximate_psds(
             cttc_threshold=cttc_threshold,
             alpha_ct=alpha_ct, alpha_st=alpha_st,
             unit_of_time=unit_of_time, max_efpr=max_efpr,
+            threshold_decimals=16,
         )
 
 
@@ -90,6 +91,7 @@ def approximate_psds_from_detections_dir(
         thresholds=np.linspace(.01, .99, 50), *,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
+        threshold_decimals=3,
 ):
     """Reference psds implementation using the psds_eval package
     (https://github.com/audioanalytic/psds_eval), which, however, only
@@ -127,6 +129,7 @@ def approximate_psds_from_detections_dir(
             "Threshold-Independent Evaluation of Sound Event Detection Scores",
             accepted for IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
             2022
+        threshold_decimals:
 
     Returns:
         psds (float): Polyphonic Sound Detection Score (PSDS), i.e., the area
@@ -139,6 +142,8 @@ def approximate_psds_from_detections_dir(
             for each event class.
 
     """
+    assert np.all(np.abs(thresholds - np.round(thresholds, threshold_decimals)) < 1e-15), (threshold_decimals, thresholds)
+    assert np.all(thresholds == np.unique(thresholds)), thresholds
     from psds_eval import PSDSEval
     ground_truth = _parse_ground_truth(ground_truth)
     audio_durations = _parse_audio_durations(audio_durations)
@@ -154,7 +159,7 @@ def approximate_psds_from_detections_dir(
     psds_eval.clear_all_operating_points()
 
     for i, threshold in enumerate(thresholds):
-        tsv = dir_path / '{:.3f}.tsv'.format(threshold)
+        tsv = dir_path / '{:.Xf}.tsv'.replace('X', str(threshold_decimals)).format(threshold)
         print(f"Adding operating point {i+1}/{len(thresholds)}", end="\r")
         det = pd.read_csv(tsv, sep="\t")
         info = {"name": f"Op {i+1:02d}", "threshold": threshold}

@@ -271,6 +271,7 @@ def write_detection(
 
 def write_detections_for_multiple_thresholds(
         scores, thresholds, dir_path, audio_format='wav', score_transform=None,
+        threshold_decimals=3,
 ):
     """writes a detection for multiple thresholds (operating points) as
     required by the psds_eval package (https://github.com/audioanalytic/psds_eval).
@@ -299,6 +300,8 @@ def write_detections_for_multiple_thresholds(
             f'thresholds must be a 1-dimensional array but has shape '
             f'{thresholds.shape}.'
         )
+    assert np.all(np.abs(thresholds - np.round(thresholds, threshold_decimals)) < 1e-15), (threshold_decimals, thresholds)
+    assert np.all(thresholds == np.unique(thresholds)), thresholds
     dir_path = Path(dir_path)
     dir_path.mkdir(parents=True, exist_ok=True)
     if score_transform is not None:
@@ -318,7 +321,7 @@ def write_detections_for_multiple_thresholds(
         for threshold in thresholds:
             write_detection(
                 {key: scores_i}, threshold,
-                dir_path / '{:.3f}.tsv'.format(threshold),
+                dir_path / '{:.Xf}.tsv'.replace('X', str(threshold_decimals)).format(threshold),
                 audio_format=audio_format,
             )
 
