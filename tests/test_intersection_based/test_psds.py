@@ -45,51 +45,48 @@ def test_psds_vs_psds_eval(dataset, params):
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100., num_jobs=8, time_decimals=6,
     )
-
-    score_transform = test_data_dir / 'validation' / 'score_transform.tsv'
-    if not score_transform.exists():
-        io.write_score_transform(
-            scores=test_data_dir / 'validation' / "scores",
-            ground_truth=test_data_dir / 'validation' / "ground_truth.tsv",
-            filepath=test_data_dir / 'validation' / 'score_transform.tsv'
-        )
-
+    thresholds = np.unique(np.concatenate([roc[2] for roc in single_class_psd_rocs.values()]))[:-1]
     (
-        psds_approx, psd_roc_approx, single_class_psd_rocs_approx
+        psds_ref, psd_roc_ref, single_class_psd_rocs_ref
     ) = intersection_based.reference.approximate_psds(
         scores=test_data_dir / dataset / "scores",
         ground_truth=test_data_dir / dataset / "ground_truth.tsv",
         audio_durations=test_data_dir / dataset / "audio_durations.tsv",
-        thresholds=np.linspace(0.001, 0.999, 500),
+        thresholds=thresholds - 1e-15,
         dtc_threshold=params['dtc_threshold'],
         gtc_threshold=params['gtc_threshold'],
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100.,
-        score_transform=score_transform,
     )
-    assert 1e-2 > (psds - psds_approx) >= 0., (psds, psds_approx)
+    assert 1e-3 > (psds - psds_ref) >= 0., (psds, psds_ref)
 
-    def assert_true_roc_geq_approx_roc(roc_true, roc_approx, class_name=''):
+    def assert_roc_true_geq_roc_ref(roc_true, roc_ref, class_name=''):
         tpr_true, fpr_true, *_ = roc_true
         fpr_true = np.round(fpr_true, 6)
-        tpr_approx, fpr_approx, *_ = roc_approx
-        fpr_approx = np.round(fpr_approx, 6)
+        tpr_ref, fpr_ref, *_ = roc_ref
+        fpr_ref = np.round(fpr_ref, 6)
         tpr_true = interp1d(
             fpr_true, tpr_true, kind='previous',
             bounds_error=False, fill_value=(0, tpr_true[-1])
-        )(fpr_approx)
-        assert (tpr_true >= tpr_approx).all(), (
+        )(fpr_ref)
+        assert (tpr_true >= tpr_ref).all(), (
             class_name,
-            np.sum(tpr_true < tpr_approx),
+            np.sum(tpr_true < tpr_ref),
             len(tpr_true),
-            (tpr_approx - tpr_true).max(),
+            (tpr_ref - tpr_true).max(),
+        )
+        assert ((tpr_true - tpr_ref) < 2e-2).all(), (
+            class_name,
+            np.sum((tpr_true - tpr_ref) >= 2e-2),
+            len(tpr_true),
+            (tpr_true - tpr_ref).max(),
         )
 
-    assert_true_roc_geq_approx_roc(psd_roc, psd_roc_approx, 'psd-roc')
+    assert_roc_true_geq_roc_ref(psd_roc, psd_roc_ref, 'psd-roc')
     for event_class in single_class_psd_rocs:
-        assert_true_roc_geq_approx_roc(
+        assert_roc_true_geq_roc_ref(
             single_class_psd_rocs[event_class],
-            single_class_psd_rocs_approx[event_class],
+            single_class_psd_rocs_ref[event_class],
             event_class,
         )
