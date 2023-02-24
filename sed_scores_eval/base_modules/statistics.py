@@ -8,7 +8,7 @@ from sed_scores_eval.base_modules.io import parse_inputs
 
 def accumulated_intermediate_statistics(
         scores, ground_truth, intermediate_statistics_fn, *,
-        num_jobs=1,
+        acceleration_fn=None, num_jobs=1,
         **intermediate_statistics_fn_kwargs
 ):
     """Core function of this package. It computes the deltas of intermediate
@@ -58,6 +58,9 @@ def accumulated_intermediate_statistics(
                 class ground truth events
               other_offset_times (list of 1d np.ndarrays): offset times of
                 other class ground truth events
+        acceleration_fn (callable): a function returning a reduced set of
+            change point candidates and/or directly the change point scores with
+            corresponding intermediate statistic deltas.
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
         **intermediate_statistics_fn_kwargs: some other key word arguments for
@@ -82,57 +85,12 @@ def accumulated_intermediate_statistics(
     single_label_ground_truths = multi_label_to_single_label_ground_truths(
         ground_truth, event_classes)
 
-    def worker(audio_ids, output_queue=None):
-        num_stats = None
-        change_point_scores = None
-        deltas = None
-        for audio_id in audio_ids:
-            scores_for_key = scores[audio_id]
-            timestamps, _ = validate_score_dataframe(
-                scores_for_key, event_classes=event_classes)
-            scores_for_key = scores_for_key[event_classes].to_numpy()
-            gt_onset_times = []
-            gt_offset_times = []
-            for c, class_name in enumerate(event_classes):
-                gt = single_label_ground_truths[class_name][audio_id]
-                if gt:
-                    current_onset_times, current_offset_times = np.array(gt).T
-                else:
-                    current_onset_times = current_offset_times = np.empty(0)
-                gt_onset_times.append(current_onset_times)
-                gt_offset_times.append(current_offset_times)
-            for c, class_name in enumerate(event_classes):
-                (
-                    unique_scores, detection_onset_times, detection_offset_times
-                ) = onset_offset_curves(scores_for_key[:, c], timestamps)
-                stats = intermediate_statistics_fn(
-                    detection_onset_times=detection_onset_times,
-                    detection_offset_times=detection_offset_times,
-                    target_onset_times=gt_onset_times[c],
-                    target_offset_times=gt_offset_times[c],
-                    other_onset_times=gt_onset_times[:c] + gt_onset_times[c+1:],
-                    other_offset_times=gt_offset_times[:c] + gt_offset_times[c+1:],
-                    **intermediate_statistics_fn_kwargs,
-                )
-                if num_stats is None:
-                    num_stats = len(stats)
-                    change_point_scores = {
-                        class_name: [] for class_name in event_classes}
-                    deltas = {
-                        class_name: {key: [] for key in stats}
-                        for class_name in event_classes
-                    }
-                cp_scores_c, deltas_c = _deltas_from_intermediate_statistics(
-                    unique_scores, stats
-                )
-                change_point_scores[class_name].append(cp_scores_c)
-                for key in deltas_c:
-                    deltas[class_name][key].append(deltas_c[key])
-        if output_queue is not None:
-            output_queue.put((change_point_scores, deltas))
-        return change_point_scores, deltas
     if num_jobs == 1:
-        change_point_scores, deltas = worker(audio_ids)
+        change_point_scores, deltas = _worker(
+            audio_ids, scores, single_label_ground_truths,
+            intermediate_statistics_fn, intermediate_statistics_fn_kwargs,
+            acceleration_fn,
+        )
     else:
         queue = multiprocessing.Queue()
         shard_size = int(np.ceil(len(audio_ids) / num_jobs))
@@ -142,7 +100,15 @@ def accumulated_intermediate_statistics(
         ]
         processes = [
             multiprocessing.Process(
-                target=worker, args=(shard, queue), daemon=True,
+                target=_worker,
+                args=(
+                    shard, scores, single_label_ground_truths,
+                    intermediate_statistics_fn,
+                    intermediate_statistics_fn_kwargs,
+                    acceleration_fn,
+                    queue
+                ),
+                daemon=True,
             )
             for shard in shards
         ]
@@ -175,6 +141,81 @@ def accumulated_intermediate_statistics(
         )
         for class_name in event_classes
     }
+
+
+def _worker(
+        audio_ids, scores, single_label_ground_truths,
+        intermediate_statistics_fn, intermediate_statistics_fn_kwargs,
+        acceleration_fn=None, output_queue=None
+):
+    num_stats = None
+    change_point_scores = None
+    deltas = None
+    _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
+    for audio_id in audio_ids:
+        scores_for_key = scores[audio_id]
+        timestamps, _ = validate_score_dataframe(
+            scores_for_key, event_classes=event_classes)
+        scores_for_key = scores_for_key[event_classes].to_numpy()
+        gt_onset_times = []
+        gt_offset_times = []
+        for c, class_name in enumerate(event_classes):
+            gt = single_label_ground_truths[class_name][audio_id]
+            if gt:
+                current_onset_times, current_offset_times = np.array(gt).T
+            else:
+                current_onset_times = current_offset_times = np.empty(0)
+            gt_onset_times.append(current_onset_times)
+            gt_offset_times.append(current_offset_times)
+        for c, class_name in enumerate(event_classes):
+            target_onset_times = gt_onset_times[c]
+            target_offset_times = gt_offset_times[c]
+            other_onset_times = gt_onset_times[:c] + gt_onset_times[c + 1:]
+            other_offset_times = gt_offset_times[:c] + gt_offset_times[c + 1:]
+            if acceleration_fn is None:
+                change_point_candidates = cp_scores_c = deltas_c = None
+            else:
+                change_point_candidates, cp_scores_c, deltas_c = acceleration_fn(
+                    scores=scores_for_key[:, c], timestamps=timestamps,
+                    target_onset_times=target_onset_times,
+                    target_offset_times=target_offset_times,
+                    other_onset_times=other_onset_times,
+                    other_offset_times=other_offset_times,
+                    **intermediate_statistics_fn_kwargs,
+                )
+                assert not (cp_scores_c is None) ^ (deltas_c is None)
+            if cp_scores_c is None:
+                (
+                    unique_scores, detection_onset_times, detection_offset_times,
+                ) = onset_offset_curves(
+                    scores_for_key[:, c], timestamps, change_point_candidates
+                )
+                stats = intermediate_statistics_fn(
+                    detection_onset_times=detection_onset_times,
+                    detection_offset_times=detection_offset_times,
+                    target_onset_times=target_onset_times,
+                    target_offset_times=target_offset_times,
+                    other_onset_times=other_onset_times,
+                    other_offset_times=other_offset_times,
+                    **intermediate_statistics_fn_kwargs,
+                )
+                cp_scores_c, deltas_c = _deltas_from_intermediate_statistics(
+                    unique_scores, stats
+                )
+            if num_stats is None:
+                num_stats = len(deltas_c)
+                change_point_scores = {
+                    class_name: [] for class_name in event_classes}
+                deltas = {
+                    class_name: {key: [] for key in deltas_c}
+                    for class_name in event_classes
+                }
+            change_point_scores[class_name].append(cp_scores_c)
+            for key in deltas_c:
+                deltas[class_name][key].append(deltas_c[key])
+    if output_queue is not None:
+        output_queue.put((change_point_scores, deltas))
+    return change_point_scores, deltas
 
 
 def _deltas_from_intermediate_statistics(scores, intermediate_stats):

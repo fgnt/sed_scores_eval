@@ -49,7 +49,7 @@ def cummax(array):
     return cummax_values, cummax_indices
 
 
-def get_first_index_where(array, criterion, value):
+def get_first_index_where(array, criterion, value, *, axis=0):
     """get the first index where array fulfills a criterion w.r.t. value,
     where criterion may be "geq" (greater equal), "gt" (greater than),
     "leq" (less equal) or "lt" (less than). If criterion is met nowhere,
@@ -82,8 +82,7 @@ def get_first_index_where(array, criterion, value):
         bool_idx = array < value
     else:
         raise ValueError(f'Invalid criterion {criterion}')
-    if bool_idx.any():
-        idx = np.argmax(bool_idx)
-    else:
-        idx = len(array)
-    return idx
+    concat_shape = list(bool_idx.shape)
+    concat_shape[axis] = 1
+    bool_idx = np.concatenate((bool_idx, np.ones(concat_shape, dtype=bool)), axis=axis)
+    return np.argmax(bool_idx, axis=axis)

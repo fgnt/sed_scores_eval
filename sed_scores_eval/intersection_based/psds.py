@@ -1,10 +1,10 @@
 import numpy as np
 from pathlib import Path
+from scipy.interpolate import interp1d
 from sed_scores_eval.utils.array_ops import cummax, get_first_index_where
 from sed_scores_eval.base_modules.io import parse_inputs, read_audio_durations
 from sed_scores_eval.utils.auc import staircase_auc
 from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics
-from scipy.interpolate import interp1d
 
 seconds_per_unit_of_time = {
     'second': 1.,
@@ -254,33 +254,7 @@ def psd_roc_from_intermediate_statistics(
         dataset_duration=dataset_duration,
         alpha_ct=alpha_ct, unit_of_time=unit_of_time, max_efpr=max_efpr,
     )
-
-    tp_ratios, efp_rates, _ = list(zip(*single_class_psd_rocs.values()))
-    overall_effective_fp_rates = np.unique(np.sort(np.concatenate(efp_rates)))
-    interpolated_tp_ratios = []
-    for tpr, efpr in zip(tp_ratios, efp_rates):
-        if len(tpr) == 1:
-            # interp1d expects at least length of 2, which, however, isn't
-            # necessary with bounds_error=False and fill_values. Therefore,
-            # simply repeat arrays if length == 1
-            tpr = tpr.repeat(2)
-            efpr = efpr.repeat(2)
-        interpolated_tp_ratios.append(
-            interp1d(
-                efpr, tpr, kind='previous',
-                bounds_error=False, fill_value=(0, tpr[-1])
-            )(overall_effective_fp_rates)
-        )
-    mu_tp = np.mean(interpolated_tp_ratios, axis=0)
-    sigma_tp = np.std(interpolated_tp_ratios, axis=0)
-    effective_tp_rate = mu_tp - alpha_st * sigma_tp
-    effective_tp_rate = np.maximum(effective_tp_rate, 0.)
-    if max_efpr is not None:
-        effective_tp_rate = np.array(
-            effective_tp_rate.tolist() + [effective_tp_rate[-1]])
-        overall_effective_fp_rates = np.array(
-            overall_effective_fp_rates.tolist() + [max_efpr]
-        )
+    effective_tp_rate, overall_effective_fp_rates = _psd_roc_from_single_class_rocs(single_class_psd_rocs, alpha_st=alpha_st, max_efpr=max_efpr)
     return effective_tp_rate, overall_effective_fp_rates, single_class_psd_rocs
 
 
@@ -341,7 +315,7 @@ def _single_class_roc_from_intermediate_statistics(
 
     scores, stats = scores_intermediate_statistics
 
-    tp_ratio = stats['tps'] / stats['n_ref']
+    tp_ratio = stats['tps'] / max(stats['n_ref'], 1)
     fp_rate = stats['fps'] / dataset_duration
     if alpha_ct == .0:
         effective_fp_rate = fp_rate
@@ -349,32 +323,60 @@ def _single_class_roc_from_intermediate_statistics(
         assert stats['cts'].shape == (len(scores), len(stats['t_ref_other'])), (
             stats['cts'].shape, len(scores), len(stats['t_ref_other']))
         ct_rates = [
-            cts_i / t_ref_i
+            cts_i / max(t_ref_i, 1e-12)
             for cts_i, t_ref_i in zip(stats['cts'].T, stats['t_ref_other'])
         ]
         effective_fp_rate = fp_rate + alpha_ct * np.mean(ct_rates, axis=0)
+    effective_fp_rate = effective_fp_rate * seconds_per_unit_of_time[unit_of_time]
+    return _unique_cummax_sort(
+        tp_ratio, effective_fp_rate, scores, max_efpr=max_efpr
+    )
+
+
+def _psd_roc_from_single_class_rocs(single_class_psd_rocs, alpha_st, max_efpr):
+    tp_ratios, efp_rates, *_ = list(zip(*single_class_psd_rocs.values()))
+    overall_effective_fp_rates = np.unique(np.sort(np.concatenate(efp_rates)))
+    interpolated_tp_ratios = []
+    for tpr, efpr in zip(tp_ratios, efp_rates):
+        if len(tpr) == 1:
+            # interp1d expects at least length of 2, which, however, isn't
+            # necessary with bounds_error=False and fill_values. Therefore,
+            # simply repeat arrays if length == 1
+            tpr = tpr.repeat(2)
+            efpr = efpr.repeat(2)
+        interpolated_tp_ratios.append(
+            interp1d(
+                efpr, tpr, kind='previous',
+                bounds_error=False, fill_value=(0, tpr[-1])
+            )(overall_effective_fp_rates)
+        )
+    mu_tp = np.mean(interpolated_tp_ratios, axis=0)
+    sigma_tp = np.std(interpolated_tp_ratios, axis=0)
+    effective_tp_rate = mu_tp - alpha_st * sigma_tp
+    effective_tp_rate = np.maximum(effective_tp_rate, 0.)
+    if max_efpr is not None:
+        effective_tp_rate = np.concatenate((
+            effective_tp_rate, [effective_tp_rate[-1]]
+        ))
+        overall_effective_fp_rates = np.concatenate((
+            overall_effective_fp_rates, [max_efpr]
+        ))
+    return effective_tp_rate, overall_effective_fp_rates
+
+
+def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
     sort_idx = sorted(
         np.arange(len(effective_fp_rate)).tolist(),
         key=lambda i: (effective_fp_rate[i], tp_ratio[i])
     )
-    effective_fp_rate = effective_fp_rate[sort_idx]
-    tp_ratio = tp_ratio[sort_idx]
-    scores = scores[sort_idx]
+    tp_ratio, effective_fp_rate, *other = [values[sort_idx] for values in [tp_ratio, effective_fp_rate, *other]]
     cummax_indices = cummax(tp_ratio)[1]
-    tp_ratio = tp_ratio[cummax_indices]
-    effective_fp_rate = (
-        effective_fp_rate[cummax_indices]
-        * seconds_per_unit_of_time[unit_of_time]
-    )
-    scores = scores[cummax_indices]
+    tp_ratio, effective_fp_rate, *other = [values[cummax_indices] for values in [tp_ratio, effective_fp_rate, *other]]
     effective_fp_rate, unique_efpr_indices = np.unique(
         effective_fp_rate[::-1], return_index=True)
     unique_efpr_indices = - 1 - unique_efpr_indices
-    tp_ratio = tp_ratio[unique_efpr_indices]
-    scores = scores[unique_efpr_indices]
+    tp_ratio, *other = [values[unique_efpr_indices] for values in [tp_ratio, *other]]
     if max_efpr is not None:
         cutoff_idx = get_first_index_where(effective_fp_rate, "gt", max_efpr)
-        tp_ratio = tp_ratio[:cutoff_idx]
-        effective_fp_rate = effective_fp_rate[:cutoff_idx]
-        scores = scores[:cutoff_idx]
-    return tp_ratio, effective_fp_rate, scores
+        tp_ratio, effective_fp_rate, *other = [values[:cutoff_idx] for values in [tp_ratio, effective_fp_rate, *other]]
+    return tp_ratio, effective_fp_rate, *other

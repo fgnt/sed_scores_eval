@@ -30,38 +30,8 @@ def intermediate_statistics(scores, ground_truth, *, num_jobs=1):
         scores, ground_truth, tagging=True)
     _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
 
-    def worker(audio_ids, output_queue=None):
-        clip_scores = None
-        clip_targets = None
-        for audio_id in audio_ids:
-            scores_k = scores[audio_id]
-            timestamps, _ = validate_score_dataframe(
-                scores_k, event_classes=event_classes)
-            scores_k = scores_k[event_classes].to_numpy().max(0)
-            gt_k = ground_truth[audio_id]
-            if not all([
-                class_name in event_classes for class_name in gt_k
-            ]):
-                unknown_tags = [
-                    class_name for class_name in gt_k
-                    if class_name not in event_classes
-                ]
-                raise ValueError(
-                    f'ground truth contains unknown tags. Unknown tags: '
-                    f'{unknown_tags}; Known tags: {event_classes};'
-                )
-            if clip_scores is None:
-                clip_scores = {class_name: [] for class_name in event_classes}
-                clip_targets = {class_name: [] for class_name in event_classes}
-            for c, class_name in enumerate(event_classes):
-                clip_scores[class_name].append(scores_k[c])
-                clip_targets[class_name].append(class_name in gt_k)
-        if output_queue is not None:
-            output_queue.put((clip_scores, clip_targets))
-        return clip_scores, clip_targets
-
     if num_jobs == 1:
-        clip_scores, clip_targets = worker(audio_ids)
+        clip_scores, clip_targets = _worker(audio_ids, scores, ground_truth, event_classes)
     else:
         queue = multiprocessing.Queue()
         shard_size = int(np.ceil(len(audio_ids) / num_jobs))
@@ -71,7 +41,11 @@ def intermediate_statistics(scores, ground_truth, *, num_jobs=1):
         ]
         processes = [
             multiprocessing.Process(
-                target=worker, args=(shard, queue), daemon=True,
+                target=_worker,
+                args=(
+                    shard, scores, ground_truth, event_classes, queue
+                ),
+                daemon=True,
             )
             for shard in shards
         ]
@@ -117,3 +91,34 @@ def intermediate_statistics(scores, ground_truth, *, num_jobs=1):
         class_name: (clip_scores[class_name], stats[class_name])
         for class_name in event_classes
     }
+
+
+def _worker(audio_ids, scores, ground_truth, event_classes=None, output_queue=None):
+    clip_scores = None
+    clip_targets = None
+    for audio_id in audio_ids:
+        scores_k = scores[audio_id]
+        timestamps, _ = validate_score_dataframe(
+            scores_k, event_classes=event_classes)
+        scores_k = scores_k[event_classes].to_numpy().max(0)
+        gt_k = ground_truth[audio_id]
+        if not all([
+            class_name in event_classes for class_name in gt_k
+        ]):
+            unknown_tags = [
+                class_name for class_name in gt_k
+                if class_name not in event_classes
+            ]
+            raise ValueError(
+                f'ground truth contains unknown tags. Unknown tags: '
+                f'{unknown_tags}; Known tags: {event_classes};'
+            )
+        if clip_scores is None:
+            clip_scores = {class_name: [] for class_name in event_classes}
+            clip_targets = {class_name: [] for class_name in event_classes}
+        for c, class_name in enumerate(event_classes):
+            clip_scores[class_name].append(scores_k[c])
+            clip_targets[class_name].append(class_name in gt_k)
+    if output_queue is not None:
+        output_queue.put((clip_scores, clip_targets))
+    return clip_scores, clip_targets

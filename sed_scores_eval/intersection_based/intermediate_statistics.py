@@ -1,8 +1,10 @@
 import numpy as np
-from sed_scores_eval.utils.scores import validate_score_dataframe
+from sed_scores_eval.utils.scores import validate_score_dataframe, onset_offset_times_to_score_indices
+from sed_scores_eval.utils.array_ops import cummin
 from sed_scores_eval.base_modules.ground_truth import event_counts_and_durations
 from sed_scores_eval.base_modules.statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.io import parse_inputs
+from sed_scores_eval.base_modules.detection import onset_deltas
 
 
 def intermediate_statistics(
@@ -62,6 +64,7 @@ def intermediate_statistics(
     multi_label_statistics = accumulated_intermediate_statistics(
         scores, ground_truth,
         intermediate_statistics_fn=statistics_fn,
+        acceleration_fn=acceleration_fn,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -163,19 +166,67 @@ def statistics_fn(
     else:
         cts = []
         for gt_onset_times, gt_offset_times in zip(other_onset_times, other_offset_times):
-            other_class_intersections = np.maximum(
-                np.minimum(detection_offset_times[..., None], gt_offset_times)
-                - np.maximum(detection_onset_times[..., None], gt_onset_times),
-                0.,
-            )
-            total_intersection_with_other_gt_events = np.round(
-                np.sum((1-dtc[..., None]) * other_class_intersections, axis=-1),
-                decimals=time_decimals
-            )
-            cttc = (
-                total_intersection_with_other_gt_events
-                >= np.round(cttc_threshold * detection_lengths, decimals=time_decimals)
-            ) * det_crit
-            cts.append(cttc.sum(-1))
+            if len(gt_onset_times) == 0:
+                cts.append(np.zeros_like(tps))
+            else:
+                other_class_intersections = np.maximum(
+                    np.minimum(detection_offset_times[..., None], gt_offset_times)
+                    - np.maximum(detection_onset_times[..., None], gt_onset_times),
+                    0.,
+                )
+                total_intersection_with_other_gt_events = np.round(
+                    np.sum((1-dtc[..., None]) * other_class_intersections, axis=-1),
+                    decimals=time_decimals
+                )
+                cttc = (
+                    total_intersection_with_other_gt_events
+                    >= np.round(cttc_threshold * detection_lengths, decimals=time_decimals)
+                ) * det_crit
+                cts.append(cttc.sum(-1))
         cts = np.array(cts).T
     return {'tps': tps, 'fps': fps, 'cts': cts}
+
+
+def acceleration_fn(
+        scores, timestamps,
+        target_onset_times, target_offset_times,
+        other_onset_times, other_offset_times,
+        dtc_threshold, gtc_threshold, cttc_threshold,
+        time_decimals=6,
+):
+    # return np.unique(scores), None, None
+    onset_deltas_ = onset_deltas(scores)
+    change_points = np.abs(onset_deltas_) > .5
+    if (len(target_onset_times) == 0) and (
+        (cttc_threshold is None) or all([
+            len(gt_onset_times) == 0 for gt_onset_times in other_onset_times
+        ])
+    ):
+        cp_scores = scores[change_points]
+        if cttc_threshold is None:
+            cts_deltas = np.zeros_like(cp_scores)
+        else:
+            cts_deltas = np.zeros((len(cp_scores), len(other_onset_times)))
+        deltas = {
+            'fps': onset_deltas_[change_points],
+            'tps': np.zeros_like(cp_scores),
+            'cts': cts_deltas,
+        }
+        return None, cp_scores, deltas
+    # return np.unique(scores), None, None
+    if cttc_threshold is None:
+        gt_onset_times = target_onset_times
+        gt_offset_times = target_offset_times
+    else:
+        gt_onset_times = np.concatenate([target_onset_times] + other_onset_times)
+        gt_offset_times = np.concatenate([target_offset_times] + other_offset_times)
+
+    for onset_time, offset_time in zip(gt_onset_times, gt_offset_times):
+        onset_idx, offset_idx = onset_offset_times_to_score_indices(onset_time, offset_time, timestamps)
+        change_points[onset_idx:offset_idx] = True
+        right_sided_cummin_indices = offset_idx-1 + cummin(scores[offset_idx-1:])[1]
+        change_points[right_sided_cummin_indices] = True
+        left_sided_cummin_indices = onset_idx - cummin(scores[:onset_idx+1][::-1])[1]
+        change_points[left_sided_cummin_indices] = True
+
+    return np.unique(scores[change_points]), None, None

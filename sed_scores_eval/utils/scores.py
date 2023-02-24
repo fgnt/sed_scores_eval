@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sed_scores_eval.utils.array_ops import get_first_index_where
 
 
 def create_score_dataframe(scores, timestamps, event_classes):
@@ -141,3 +142,34 @@ def get_unique_thresholds(scores):
         [-np.inf], (unique_scores[1:] + unique_scores[:-1]) / 2
     ))
     return unique_thresholds, sort_indices, unique_scores_indices
+
+
+def onset_offset_times_to_score_indices(onset_time, offset_time, timestamps):
+    """
+
+    Args:
+        onset_time:
+        offset_time:
+        timestamps:
+
+    Returns:
+        onset_idx:
+        offset_idx:
+
+    """
+    assert offset_time > onset_time, (onset_time, offset_time)
+    # assert t_off <= timestamps[-1], (t_off, timestamps[-1])
+    onset_idx = max(
+        get_first_index_where(timestamps, 'gt', onset_time) - 1,
+        0
+    )
+    assert timestamps[onset_idx] <= onset_time, (
+        timestamps[onset_idx], onset_time)
+    offset_idx = min(
+        get_first_index_where(timestamps, 'geq', offset_time),
+        len(timestamps) - 1,
+    )
+    assert offset_idx > onset_idx, (onset_idx, offset_idx)
+    # assert timestamps[onset_idx] <= onset_time < timestamps[onset_idx+1]
+    # assert timestamps[offset_idx-1] < offset_time <= timestamps[onset_idx+1]
+    return onset_idx, offset_idx

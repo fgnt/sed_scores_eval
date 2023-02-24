@@ -57,65 +57,11 @@ def intermediate_statistics(
     single_label_ground_truths = multi_label_to_single_label_ground_truths(
         ground_truth, event_classes)
 
-    def worker(audio_ids, output_queue=None):
-        segment_scores = None
-        segment_targets = None
-        for audio_id in audio_ids:
-            scores_k = scores[audio_id]
-            timestamps, _ = validate_score_dataframe(
-                scores_k, event_classes=event_classes)
-            timestamps = np.round(timestamps, time_decimals)
-            if segment_scores is None:
-                segment_scores = {class_name: [] for class_name in event_classes}
-                segment_targets = {class_name: [] for class_name in event_classes}
-            scores_k = scores_k[event_classes].to_numpy()
-            if audio_durations is None:
-                duration = max(
-                    [timestamps[-1]] + [t_off for t_on, t_off, _ in ground_truth[audio_id]]
-                )
-            else:
-                duration = audio_durations[audio_id]
-            n_segments = int(np.ceil(duration / segment_length))
-            segment_boundaries = np.round(
-                np.arange(n_segments+1) * segment_length,
-                time_decimals
-            )
-            segment_onsets = segment_boundaries[:-1]
-            segment_offsets = segment_boundaries[1:]
-            for class_name in event_classes:
-                gt = single_label_ground_truths[class_name][audio_id]
-                if len(gt) == 0:
-                    segment_targets[class_name].append(
-                        np.zeros(n_segments, dtype=np.bool_))
-                else:
-                    segment_targets[class_name].append(
-                        np.any([
-                            (segment_onsets < gt_offset)
-                            * (segment_offsets > gt_onset)
-                            * (segment_offsets > segment_onsets)
-                            for gt_onset, gt_offset in
-                            single_label_ground_truths[class_name][audio_id]
-                        ], axis=0)
-                    )
-            for i in range(n_segments):
-                idx_on = get_first_index_where(
-                    timestamps, "gt", segment_onsets[i]) - 1
-                idx_on = max(idx_on, 0)
-                idx_off = get_first_index_where(
-                    timestamps, "geq", segment_offsets[i])
-                idx_off = min(idx_off, len(timestamps)-1)
-                if idx_off <= idx_on:
-                    scores_ki = np.zeros(scores_k.shape[-1])
-                else:
-                    scores_ki = np.max(scores_k[idx_on:idx_off], axis=0)
-                for c, class_name in enumerate(event_classes):
-                    segment_scores[class_name].append(scores_ki[c])
-        if output_queue is not None:
-            output_queue.put((segment_scores, segment_targets))
-        return segment_scores, segment_targets
-
     if num_jobs == 1:
-        segment_scores, segment_targets = worker(audio_ids)
+        segment_scores, segment_targets = _worker(
+            audio_ids, scores, single_label_ground_truths, audio_durations,
+            segment_length,  event_classes, time_decimals,
+        )
     else:
         queue = multiprocessing.Queue()
         shard_size = int(np.ceil(len(audio_ids) / num_jobs))
@@ -125,7 +71,12 @@ def intermediate_statistics(
         ]
         processes = [
             multiprocessing.Process(
-                target=worker, args=(shard, queue), daemon=True,
+                target=_worker,
+                args=(
+                    shard, scores, single_label_ground_truths, audio_durations,
+                    segment_length,  event_classes, time_decimals, queue
+                ),
+                daemon=True,
             )
             for shard in shards
         ]
@@ -170,3 +121,68 @@ def intermediate_statistics(
         class_name: (segment_scores[class_name], stats[class_name])
         for class_name in event_classes
     }
+
+
+def _worker(
+        audio_ids, scores, single_label_ground_truths, audio_durations,
+        segment_length=1., event_classes=None, time_decimals=6,
+        output_queue=None,
+):
+    segment_scores = None
+    segment_targets = None
+    for audio_id in audio_ids:
+        scores_k = scores[audio_id]
+        timestamps, _ = validate_score_dataframe(
+            scores_k, event_classes=event_classes)
+        timestamps = np.round(timestamps, time_decimals)
+        if segment_scores is None:
+            segment_scores = {class_name: [] for class_name in event_classes}
+            segment_targets = {class_name: [] for class_name in event_classes}
+        scores_k = scores_k[event_classes].to_numpy()
+        if audio_durations is None:
+            duration = max(
+                [timestamps[-1]] + [
+                    t_off for class_name in event_classes
+                    for t_on, t_off, *_ in single_label_ground_truths[class_name][audio_id]
+                ]
+            )
+        else:
+            duration = audio_durations[audio_id]
+        n_segments = int(np.ceil(duration / segment_length))
+        segment_boundaries = np.round(
+            np.arange(n_segments+1) * segment_length,
+            time_decimals
+        )
+        segment_onsets = segment_boundaries[:-1]
+        segment_offsets = segment_boundaries[1:]
+        for class_name in event_classes:
+            gt = single_label_ground_truths[class_name][audio_id]
+            if len(gt) == 0:
+                segment_targets[class_name].append(
+                    np.zeros(n_segments, dtype=np.bool_))
+            else:
+                segment_targets[class_name].append(
+                    np.any([
+                        (segment_onsets < gt_offset)
+                        * (segment_offsets > gt_onset)
+                        * (segment_offsets > segment_onsets)
+                        for gt_onset, gt_offset in
+                        single_label_ground_truths[class_name][audio_id]
+                    ], axis=0)
+                )
+        for i in range(n_segments):
+            idx_on = get_first_index_where(
+                timestamps, "gt", segment_onsets[i]) - 1
+            idx_on = max(idx_on, 0)
+            idx_off = get_first_index_where(
+                timestamps, "geq", segment_offsets[i])
+            idx_off = min(idx_off, len(timestamps)-1)
+            if idx_off <= idx_on:
+                scores_ki = np.zeros(scores_k.shape[-1])
+            else:
+                scores_ki = np.max(scores_k[idx_on:idx_off], axis=0)
+            for c, class_name in enumerate(event_classes):
+                segment_scores[class_name].append(scores_ki[c])
+    if output_queue is not None:
+        output_queue.put((segment_scores, segment_targets))
+    return segment_scores, segment_targets

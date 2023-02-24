@@ -43,14 +43,14 @@ def metrics(
             filepath=tmp_filepath, audio_format=audio_format,
         )
         reference_event_list = sed_eval.io.load_event_list(
-            filename=ground_truth
+            filename=ground_truth, file_format='CSV',
         )
         reference_event_list = dcase_util.containers.MetaDataContainer(
             [entry for entry in reference_event_list if
              entry['event_label'] is not None]
         )
         estimated_event_list = sed_eval.io.load_event_list(
-            filename=str(tmp_filepath)
+            filename=str(tmp_filepath), file_format='CSV',
         )
 
         all_data = dcase_util.containers.MetaDataContainer()

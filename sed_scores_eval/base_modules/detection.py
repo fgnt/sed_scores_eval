@@ -1,14 +1,12 @@
 import numpy as np
 import pandas as pd
-from einops import rearrange
-from sed_scores_eval.utils.array_ops import cummin
 from sed_scores_eval.utils.scores import validate_score_dataframe
 
 
-def onset_offset_curves(scores, timestamps):
+def onset_offset_curves(scores, timestamps, change_point_candidates=None):
     """get onset and offset times of event detections for various decision
     thresholds. Here, the number of event detections is given by the number of
-    local maximums in the score signal with events being spawned when the
+    local maxima in the score signal with events being spawned when the
     decision threshold falls below the local maximum. However, usually only a
     subset of these events is active simultanously while others are inactive,
     e.g., because a certain threshold does not yet fall below all local
@@ -22,6 +20,7 @@ def onset_offset_curves(scores, timestamps):
         scores (1d np.ndarray): SED scores for a single event class
         timestamps (1d np.ndarray): onset timestamps for each score plus one more
             timestamp which is the final offset time.
+        change_point_candidates (1d np.ndarray)
 
     Returns:
         scores_unique (1d np.ndarray): unique and sorted score array
@@ -60,91 +59,36 @@ def onset_offset_curves(scores, timestamps):
             f'but array of shape {timestamps.shape} was given.'
         )
 
-    onset_deltas_ = _onset_deltas(scores)
-    event_spawn_indices = np.argwhere(onset_deltas_ > 0.5).flatten()
-    event_merge_indices = np.argwhere(onset_deltas_ < -0.5).flatten()
-    assert len(event_merge_indices) == len(event_spawn_indices) - 1, (
-        len(event_spawn_indices), len(event_merge_indices))
-    assert (event_spawn_indices[:-1] < event_merge_indices).all(), (
-        event_spawn_indices, event_merge_indices)
-    scores_unique, unique_indices, inverse_indices = np.unique(
-        scores, return_index=True, return_inverse=True)
-    onset_offset_times = []
-    for i, current_spawn_idx in enumerate(event_spawn_indices):
-        if i == 0:
-            current_merge_idx = 0
-        else:
-            current_merge_idx = event_merge_indices[i-1]
-        onset_offset_times.append(_single_detection_onset_offset_curve(
-            scores, timestamps, current_spawn_idx, current_merge_idx,
-            scores_unique, inverse_indices
-        ))
-    onset_offset_times = np.array(onset_offset_times)
-    onset_offset_times = rearrange(onset_offset_times, 'd t b -> t b d')
-    onset_times, offset_times = onset_offset_times
-    return scores_unique, onset_times, offset_times
+    if change_point_candidates is None:
+        change_point_candidates = np.unique(scores)
+    detection = scores >= change_point_candidates[:, None]
+    prev_detection = np.concatenate(
+        (np.zeros_like(detection[:, :1]), detection),
+        axis=1,
+    )
+    detection = np.concatenate(
+        (detection, np.zeros_like(detection[:, :1]),),
+        axis=1,
+    )
+    onsets = detection > prev_detection
+    offsets = detection < prev_detection
+    # assert (onsets.sum(-1) == offsets.sum(-1)).all()
+    n_events = onsets.sum(-1)
+    max_events = n_events.max()
+
+    onset_times = np.zeros((len(change_point_candidates), max_events))
+    offset_times = np.zeros_like(onset_times)
+    thres_indices, frame_indices = np.argwhere(onsets).T
+    n_events_offset = np.cumsum(n_events) - n_events
+    event_indices = np.arange(len(thres_indices)) - n_events_offset[thres_indices]
+    onset_times[thres_indices, event_indices] = timestamps[frame_indices]
+    thres_indices, frame_indices = np.argwhere(offsets).T
+    offset_times[thres_indices, event_indices] = timestamps[frame_indices]
+    # print(onset_times.shape)
+    return change_point_candidates, onset_times, offset_times
 
 
-def _single_detection_onset_offset_curve(
-        scores, timestamps, spawn_idx, merge_idx_prev,
-        scores_unique, inverse_indices,
-):
-    """get onset and offset times when threshold falls below each of the scores
-    for a single event that is spawned when threshold falls below the local
-    maximum at spawn_idx and is merged with the previous event when threshold
-    falls below the local minimum at merge_idx. merge_idx == 0 indicates that
-    event is the first event / local maximum.
-
-    Args:
-        scores (1d np.ndarray): SED scores for a single event class
-        timestamps (1d np.ndarray): onset timestamps for each score plus one more
-            timestamp which is the final offset time.
-        spawn_idx (int): Index of local maximum
-        merge_idx_prev (int): Index of previous local minimum. If merge_idx == 0
-            event is considered the first event / local maximum.
-        scores_unique (1d np.ndarray):
-        inverse_indices (1d np.ndarray):
-
-    Returns:
-        onset_times (1d np.ndarray): onset times for current event when decsion
-            threshold falls below each of the scores.
-        offset_times (1d np.ndarray): offset times for current event when
-            decsion threshold falls below each of the scores.
-
-    >>> y = np.array([.4,1.,.1,.6,.5,.6,.4,])
-    >>> ts = np.linspace(0.,len(y)*.2,len(y) + 1)  # each score has width of 200ms
-    >>> _single_detection_onset_offset_curve(y, ts, 1, 0)
-    (array([0. , 0.2, 0. , 0.2, 0.2, 0.2, 0. ]), array([0.4, 0.4, 1.4, 0.4, 0.4, 0.4, 0.4]))
-    >>> _single_detection_onset_offset_curve(y, ts, 3, 2)
-    (array([0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]), array([1.4, 0.6, 0.6, 0.8, 1.2, 0.8, 1.4]))
-    >>> _single_detection_onset_offset_curve(y, ts, 5, 4)
-    (array([1., 1., 1., 1., 1., 1., 1.]), array([1. , 1. , 1. , 1.2, 1. , 1.2, 1. ]))
-    """
-    # pre_spawn_cummin_indices = np.unique(spawn_idx - cummin(scores[merge_idx:spawn_idx+1][::-1])[1])
-    pre_spawn_cummin_indices = np.arange(merge_idx_prev, spawn_idx + 1)
-    post_spawn_cummin_indices = spawn_idx + cummin(scores[spawn_idx:])[1]
-
-    onset_time_indices = [0] + (pre_spawn_cummin_indices[:-1]+1).tolist()
-    onset_times = timestamps[onset_time_indices]
-    offset_time_indices = (post_spawn_cummin_indices[1:]).tolist()+[len(scores)]
-    offset_times = timestamps[offset_time_indices]
-
-    onset_time_deltas = np.zeros_like(scores_unique)
-    onset_time_deltas[inverse_indices[pre_spawn_cummin_indices[:-1]]] = onset_times[:-1] - onset_times[1:]
-    offset_time_deltas = np.zeros_like(scores_unique)
-    offset_time_deltas[inverse_indices[post_spawn_cummin_indices]] = offset_times - np.concatenate(
-        ([timestamps[spawn_idx]], offset_times[:-1]))
-
-    onset_times = timestamps[spawn_idx] + np.cumsum(onset_time_deltas[::-1])[::-1]
-    offset_times = timestamps[spawn_idx] + np.cumsum(offset_time_deltas[::-1])[::-1]
-
-    if merge_idx_prev > 0:
-        onset_times[scores_unique <= scores[merge_idx_prev]] = timestamps[spawn_idx]
-        offset_times[scores_unique <= scores[merge_idx_prev]] = timestamps[spawn_idx]
-    return onset_times, offset_times
-
-
-def _onset_deltas(scores):
+def onset_deltas(scores):
     """return the change in the total number of onsets when decision threshold
     falls below each of the scores, i.e., +1 at local maximums and -1 at local
     minimums in score signal.
@@ -155,10 +99,10 @@ def _onset_deltas(scores):
     Returns:
         onset_deltas (1d np.ndarray): array with same length as scores
         indicating the change in the number of onsets when decision threshold
-        falls below each of the scores, i.e., +1 at local maximums and -1 at
-        local minimums in score signal.
+        falls below each of the scores, i.e., +1 at local maxima and -1 at
+        local minima in score signal.
 
-    >>> _onset_deltas(np.array([1,2,3,3,4,3]))
+    >>> onset_deltas(np.array([1,2,3,3,4,3]))
     """
     assert isinstance(scores, np.ndarray), scores
     prev_scores = np.concatenate(([-np.inf], scores[:-1]))
@@ -170,6 +114,20 @@ def _onset_deltas(scores):
 
 
 def scores_to_event_list(scores, thresholds, event_classes=None):
+    """detect events and return as list
+
+    Args:
+        scores ((dict of) pandas.DataFrame): containing onset and offset times
+            of a score window in first two columns followed by sed score
+            columns for each event class.
+        thresholds (1d np.ndarray or dict of floats): thresholds to be used for
+            the different event classes.
+        event_classes (list of str): optional list of event classes used to
+            assert correct event labels in scores DataFrame
+
+    Returns:
+        event_list (list of tuple): list of events as tuples (onset, offset, event_class)
+    """
     if not isinstance(scores, pd.DataFrame) and hasattr(scores, 'keys'):
         assert callable(scores.keys)
         keys = sorted(scores.keys())
