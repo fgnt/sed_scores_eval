@@ -62,20 +62,30 @@ def parse_inputs(scores, ground_truth, *, tagging=False):
     return scores, ground_truth, audio_ids
 
 
-def write_sed_scores(scores, filepath, *, timestamps=None, event_classes=None):
+def write_sed_scores(scores, storage_path, *, timestamps=None, event_classes=None):
     """write sound event detection scores to tsv file
 
     Args:
-        scores (pandas.DataFrame): containing onset and offset times
+        scores ((dict of) pandas.DataFrame): containing onset and offset times
             of a score window in first two columns followed by sed score
-            columns for each event class.
-        filepath (str or pathlib.Path): path to file that is to be written
+            columns for each event class. If dict keys are expected to be
+            audio ids with corresponding data frames as values.
+        storage_path (str or pathlib.Path): path to directory/file that is to be written
         timestamps (np.ndarray or list of float): optional list of timestamps
             to be compared with timestamps in scores DataFrame
         event_classes (list of str): optional list of event classes used to
             assert correct event labels in scores DataFrame
 
     """
+    if isinstance(scores, dict):
+        storage_path = Path(storage_path)
+        storage_path.mkdir(exist_ok=True, parents=True)
+        for audio_id, c_scores in scores.items():
+            write_sed_scores(
+                c_scores, storage_path / (audio_id + '.tsv'),
+                timestamps=timestamps, event_classes=event_classes
+            )
+        return
     if not isinstance(scores, (np.ndarray, pd.DataFrame)):
         raise ValueError(
             f'scores must be np.ndarray or pd.DataFrame but {type(scores)}'
@@ -92,7 +102,7 @@ def write_sed_scores(scores, filepath, *, timestamps=None, event_classes=None):
             )
         scores = create_score_dataframe(scores, timestamps, event_classes)
     validate_score_dataframe(scores, timestamps=timestamps, event_classes=event_classes)
-    scores.to_csv(filepath, sep='\t', index=False)
+    scores.to_csv(storage_path, sep='\t', index=False)
 
 
 def read_sed_scores(filepath):
