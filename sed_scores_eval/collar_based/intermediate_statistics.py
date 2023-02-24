@@ -21,7 +21,7 @@ def intermediate_statistics(
 
     [2] J.Ebbers, R.Serizel, and R.Haeb-Umbach
     "Threshold-Independent Evaluation of Sound Event Detection Scores",
-    accepted for IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
     2022
 
     Args:

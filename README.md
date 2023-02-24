@@ -7,7 +7,7 @@ evaluation of Sound Event Detection (SED) systems based on the SED system's
 soft classification scores as described in
 > **Threshold-Independent Evaluation of Sound Event Detection Scores**  
 J. Ebbers, R. Serizel and R. Haeb-Umbach  
-accepted for IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP) 2022  
+in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP) 2022
 https://arxiv.org/abs/2201.13148
 
 With SED systems providing soft classification scores (usually frame-wise),
