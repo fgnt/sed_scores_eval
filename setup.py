@@ -25,6 +25,7 @@ st.setup(
 
     description='(Threshold-Independent) Evaluation of Sound Event Detection Scores',
     long_description=long_description,
+    long_description_content_type='text/markdown',
 
     # The project's main homepage.
     url='https://github.com/fgnt/sed_scores_eval',
