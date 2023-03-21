@@ -379,4 +379,4 @@ def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
     if max_efpr is not None:
         cutoff_idx = get_first_index_where(effective_fp_rate, "gt", max_efpr)
         tp_ratio, effective_fp_rate, *other = [values[:cutoff_idx] for values in [tp_ratio, effective_fp_rate, *other]]
-    return tp_ratio, effective_fp_rate, *other
+    return (tp_ratio, effective_fp_rate, *other)
