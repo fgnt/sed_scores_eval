@@ -1,4 +1,4 @@
-from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics
+from sed_scores_eval.intersection_based.intermediate_statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.precision_recall import (
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics,
@@ -8,7 +8,7 @@ from sed_scores_eval.base_modules.precision_recall import (
 
 
 def precision_recall_curve(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         dtc_threshold, gtc_threshold,
         time_decimals=6, num_jobs=1,
 ):
@@ -27,10 +27,15 @@ def precision_recall_curve(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
+            chosen to high, e.g., a detection with a ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
@@ -48,8 +53,8 @@ def precision_recall_curve(
              'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
@@ -59,7 +64,7 @@ def precision_recall_curve(
 
 
 def fscore_curve(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         dtc_threshold, gtc_threshold, beta=1.,
         time_decimals=6, num_jobs=1,
 ):
@@ -74,11 +79,16 @@ def fscore_curve(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
+            chosen to high, e.g., a detection with a ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
@@ -98,8 +108,8 @@ def fscore_curve(
             'n_ref': integer number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
@@ -109,7 +119,7 @@ def fscore_curve(
 
 
 def fscore(
-        scores, ground_truth, threshold, *,
+        scores, ground_truth, threshold, *, deltas=None,
         dtc_threshold, gtc_threshold, beta=1.,
         time_decimals=6, num_jobs=1,
 ):
@@ -124,12 +134,17 @@ def fscore(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         threshold ((dict of) float): threshold that is to be evaluated.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
+            chosen to high, e.g., a detection with a ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
@@ -146,8 +161,8 @@ def fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
@@ -157,7 +172,7 @@ def fscore(
 
 
 def best_fscore(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         dtc_threshold, gtc_threshold,
         min_precision=0., min_recall=0., beta=1.,
         time_decimals=6, num_jobs=1,
@@ -174,6 +189,11 @@ def best_fscore(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         min_precision: the minimum precision that must be achieved.
@@ -182,7 +202,7 @@ def best_fscore(
             fscore, precision, recall and threshold of 0,1,0,inf are returned.
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
+            chosen to high, e.g., a detection with a ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
             because of small deviations due to limited floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
@@ -203,8 +223,8 @@ def best_fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )

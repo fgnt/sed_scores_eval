@@ -1,17 +1,84 @@
 import numpy as np
 from pathlib import Path
 import multiprocessing
-from sed_scores_eval.base_modules.io import parse_inputs, read_audio_durations
+from sed_scores_eval.base_modules import statistics
+from sed_scores_eval.base_modules.io import parse_inputs, parse_audio_durations
 from sed_scores_eval.utils.scores import validate_score_dataframe
 from sed_scores_eval.utils.array_ops import get_first_index_where
 from sed_scores_eval.base_modules.ground_truth import multi_label_to_single_label_ground_truths
 
 
-def intermediate_statistics(
+def intermediate_statistics_deltas(
         scores, ground_truth, audio_durations, *,
         segment_length=1., time_decimals=6, num_jobs=1,
 ):
-    """
+    if not isinstance(num_jobs, int) or num_jobs < 1:
+        raise ValueError(
+            f'num_jobs has to be an integer greater or equal to 1 but '
+            f'{num_jobs} was given.'
+        )
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    if audio_durations is not None:
+        audio_durations = parse_audio_durations(audio_durations, audio_ids=audio_ids)
+
+    _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
+    single_label_ground_truths = multi_label_to_single_label_ground_truths(
+        ground_truth, event_classes)
+
+    if num_jobs == 1:
+        deltas = _worker(
+            audio_ids, scores, single_label_ground_truths, audio_durations,
+            segment_length,  event_classes, time_decimals,
+        )
+    else:
+        deltas = {}
+        queue = multiprocessing.Queue()
+        shard_size = int(np.ceil(len(audio_ids) / num_jobs))
+        shards = [
+            audio_ids[i*shard_size:(i+1)*shard_size] for i in range(num_jobs)
+            if i*shard_size < len(audio_ids)
+        ]
+        processes = [
+            multiprocessing.Process(
+                target=_worker,
+                args=(
+                    shard, scores, single_label_ground_truths, audio_durations,
+                    segment_length,  event_classes, time_decimals, queue
+                ),
+                daemon=True,
+            )
+            for shard in shards
+        ]
+        try:
+            for p in processes:
+                p.start()
+            count = 0
+            while count < len(shards):
+                deltas_i = queue.get()
+                assert len(deltas.keys() & deltas_i.keys()) == 0, sorted(deltas.keys() & deltas_i.keys())
+                deltas.update(deltas_i)
+                count += 1
+        finally:
+            for p in processes:
+                p.terminate()
+    return deltas
+
+
+def accumulated_intermediate_statistics_from_deltas(deltas):
+    multi_label_statistics = statistics.accumulated_intermediate_statistics_from_deltas(deltas)
+    for _, stats_cls in multi_label_statistics.values():
+        stats_cls['n_sys'] = stats_cls['tps'] + stats_cls['fps']
+        stats_cls['n_ref'] = stats_cls['tps'][0]
+        fns = stats_cls['n_ref'] - stats_cls['tps']
+        stats_cls['tns'] = stats_cls['n_sys'][0] - stats_cls['n_sys'] - fns
+    return multi_label_statistics
+
+
+def accumulated_intermediate_statistics(
+        scores, ground_truth, audio_durations, *, deltas=None,
+        segment_length=1., time_decimals=6, num_jobs=1,
+):
+    """Cascade of `intermediate_statistics_deltas` and `accumulated_intermediate_statistics_from_deltas`.
 
     Args:
         scores (dict, str, pathlib.Path): dict of SED score DataFrames
@@ -35,92 +102,17 @@ def intermediate_statistics(
     Returns:
 
     """
-    if not isinstance(num_jobs, int) or num_jobs < 1:
-        raise ValueError(
-            f'num_jobs has to be an integer greater or equal to 1 but '
-            f'{num_jobs} was given.'
-        )
-    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
-    if isinstance(audio_durations, (str, Path)):
-        audio_durations = Path(audio_durations)
-        assert audio_durations.is_file(), audio_durations
-        audio_durations = read_audio_durations(audio_durations)
-
-    if audio_durations is not None and not audio_durations.keys() == set(audio_ids):
-        raise ValueError(
-            f'audio_durations audio ids do not match audio ids in scores. '
-            f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
-            f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
-        )
-
-    _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
-    single_label_ground_truths = multi_label_to_single_label_ground_truths(
-        ground_truth, event_classes)
-
-    if num_jobs == 1:
-        segment_scores, segment_targets = _worker(
-            audio_ids, scores, single_label_ground_truths, audio_durations,
-            segment_length,  event_classes, time_decimals,
+    if deltas is None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+        deltas = intermediate_statistics_deltas(
+            scores=scores, ground_truth=ground_truth,
+            audio_durations=audio_durations,
+            segment_length=segment_length, time_decimals=time_decimals,
+            num_jobs=num_jobs,
         )
     else:
-        queue = multiprocessing.Queue()
-        shard_size = int(np.ceil(len(audio_ids) / num_jobs))
-        shards = [
-            audio_ids[i*shard_size:(i+1)*shard_size] for i in range(num_jobs)
-            if i*shard_size < len(audio_ids)
-        ]
-        processes = [
-            multiprocessing.Process(
-                target=_worker,
-                args=(
-                    shard, scores, single_label_ground_truths, audio_durations,
-                    segment_length,  event_classes, time_decimals, queue
-                ),
-                daemon=True,
-            )
-            for shard in shards
-        ]
-        try:
-            for p in processes:
-                p.start()
-            segment_scores, segment_targets = None, None
-            count = 0
-            while count < len(shards):
-                seg_scores_i, seg_targets_i = queue.get()
-                if segment_scores is None:
-                    segment_scores = seg_scores_i
-                    segment_targets = seg_targets_i
-                else:
-                    for class_name in segment_scores:
-                        segment_scores[class_name].extend(seg_scores_i[class_name])
-                        segment_targets[class_name].extend(seg_targets_i[class_name])
-                count += 1
-        finally:
-            for p in processes:
-                p.terminate()
-    stats = {}
-    for class_name in event_classes:
-        segment_scores[class_name] = np.array(segment_scores[class_name]+[np.inf])
-        sort_idx = np.argsort(segment_scores[class_name])
-        segment_scores[class_name] = segment_scores[class_name][sort_idx]
-        segment_targets[class_name] = np.concatenate(
-            segment_targets[class_name]+[np.zeros(1)])[sort_idx]
-        tps = np.cumsum(segment_targets[class_name][::-1])[::-1]
-        n_sys = np.arange(len(tps))[::-1]
-        segment_scores[class_name], unique_idx = np.unique(segment_scores[class_name], return_index=True)
-        n_ref = tps[0]
-        fns = n_ref - tps
-        tns = n_sys[0] - n_sys - fns
-        stats[class_name] = {
-            'tps': tps[unique_idx],
-            'fps': n_sys[unique_idx] - tps[unique_idx],
-            'tns': tns,
-            'n_ref': n_ref,
-        }
-    return {
-        class_name: (segment_scores[class_name], stats[class_name])
-        for class_name in event_classes
-    }
+        audio_ids = list(deltas.keys())
+    return accumulated_intermediate_statistics_from_deltas(deltas), audio_ids
 
 
 def _worker(
@@ -128,16 +120,12 @@ def _worker(
         segment_length=1., event_classes=None, time_decimals=6,
         output_queue=None,
 ):
-    segment_scores = None
-    segment_targets = None
+    deltas = {}
     for audio_id in audio_ids:
         scores_k = scores[audio_id]
         timestamps, _ = validate_score_dataframe(
             scores_k, event_classes=event_classes)
         timestamps = np.round(timestamps, time_decimals)
-        if segment_scores is None:
-            segment_scores = {class_name: [] for class_name in event_classes}
-            segment_targets = {class_name: [] for class_name in event_classes}
         scores_k = scores_k[event_classes].to_numpy()
         if audio_durations is None:
             duration = max(
@@ -155,21 +143,20 @@ def _worker(
         )
         segment_onsets = segment_boundaries[:-1]
         segment_offsets = segment_boundaries[1:]
+        tp_deltas = {}
         for class_name in event_classes:
             gt = single_label_ground_truths[class_name][audio_id]
             if len(gt) == 0:
-                segment_targets[class_name].append(
-                    np.zeros(n_segments, dtype=np.bool_))
+                tp_deltas[class_name] = np.zeros(n_segments, dtype=bool)
             else:
-                segment_targets[class_name].append(
-                    np.any([
-                        (segment_onsets < gt_offset)
-                        * (segment_offsets > gt_onset)
-                        * (segment_offsets > segment_onsets)
-                        for gt_onset, gt_offset in
-                        single_label_ground_truths[class_name][audio_id]
-                    ], axis=0)
-                )
+                tp_deltas[class_name] = np.any([
+                    (segment_onsets < gt_offset)
+                    * (segment_offsets > gt_onset)
+                    * (segment_offsets > segment_onsets)
+                    for gt_onset, gt_offset in
+                    single_label_ground_truths[class_name][audio_id]
+                ], axis=0)
+        cp_scores = {class_name: [] for class_name in event_classes}
         for i in range(n_segments):
             idx_on = get_first_index_where(
                 timestamps, "gt", segment_onsets[i]) - 1
@@ -182,7 +169,11 @@ def _worker(
             else:
                 scores_ki = np.max(scores_k[idx_on:idx_off], axis=0)
             for c, class_name in enumerate(event_classes):
-                segment_scores[class_name].append(scores_ki[c])
+                cp_scores[class_name].append(scores_ki[c])
+        if audio_id not in deltas:
+            deltas[audio_id] = {}
+        for class_name in tp_deltas:
+            deltas[audio_id][class_name] = (np.array(cp_scores[class_name]), {'tps': tp_deltas[class_name], 'fps': 1-tp_deltas[class_name]})
     if output_queue is not None:
-        output_queue.put((segment_scores, segment_targets))
-    return segment_scores, segment_targets
+        output_queue.put(deltas)
+    return deltas

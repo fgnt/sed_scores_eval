@@ -1,26 +1,13 @@
 import numpy as np
 import multiprocessing
+from sed_scores_eval.base_modules import statistics
 from sed_scores_eval.base_modules.io import parse_inputs
 from sed_scores_eval.utils.scores import validate_score_dataframe
 
 
-def intermediate_statistics(scores, ground_truth, *, num_jobs=1):
-    """
-
-    Args:
-        scores (dict, str, pathlib.Path): dict of SED score DataFrames
-            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
-            or a directory path (as str or pathlib.Path) from where the SED
-            scores can be loaded.
-        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
-            tags for each audio clip or a file path from where the ground truth
-            can be loaded.
-        num_jobs (int): the number of processes to use. Default is 1 in which
-            case no multiprocessing is used.
-
-    Returns:
-
-    """
+def intermediate_statistics_deltas(
+        scores, ground_truth, *, num_jobs=1,
+):
     if not isinstance(num_jobs, int) or num_jobs < 1:
         raise ValueError(
             f'num_jobs has to be an integer greater or equal to 1 but '
@@ -31,8 +18,9 @@ def intermediate_statistics(scores, ground_truth, *, num_jobs=1):
     _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
 
     if num_jobs == 1:
-        clip_scores, clip_targets = _worker(audio_ids, scores, ground_truth, event_classes)
+        deltas = _worker(audio_ids, scores, ground_truth, event_classes)
     else:
+        deltas = {}
         queue = multiprocessing.Queue()
         shard_size = int(np.ceil(len(audio_ids) / num_jobs))
         shards = [
@@ -52,50 +40,62 @@ def intermediate_statistics(scores, ground_truth, *, num_jobs=1):
         try:
             for p in processes:
                 p.start()
-            clip_scores, clip_targets = None, None
             count = 0
             while count < len(shards):
-                clip_scores_i, clip_targets_i = queue.get()
-                if clip_scores is None:
-                    clip_scores = clip_scores_i
-                    clip_targets = clip_targets_i
-                else:
-                    for class_name in clip_scores:
-                        clip_scores[class_name].extend(clip_scores_i[class_name])
-                        clip_targets[class_name].extend(clip_targets_i[class_name])
+                deltas_i = queue.get()
+                assert len(deltas.keys() & deltas_i.keys()) == 0, sorted(deltas.keys() & deltas_i.keys())
+                deltas.update(deltas_i)
                 count += 1
         finally:
             for p in processes:
                 p.terminate()
-    stats = {}
-    for class_name in event_classes:
-        clip_scores[class_name] = np.array(clip_scores[class_name]+[np.inf])
-        sort_idx = np.argsort(clip_scores[class_name])
-        clip_scores[class_name] = clip_scores[class_name][sort_idx]
-        clip_targets[class_name] = np.array(
-            clip_targets[class_name]+[0])[sort_idx]
-        tps = np.cumsum(clip_targets[class_name][::-1])[::-1]
-        n_sys = np.arange(len(tps))[::-1]
-        clip_scores[class_name], unique_idx = np.unique(
-            clip_scores[class_name], return_index=True)
-        n_ref = tps[0]
-        fns = n_ref - tps
-        tns = n_sys[0] - n_sys - fns
-        stats[class_name] = {
-            'tps': tps[unique_idx],
-            'fps': n_sys[unique_idx] - tps[unique_idx],
-            'tns': tns,
-            'n_ref': n_ref,
-        }
-    return {
-        class_name: (clip_scores[class_name], stats[class_name])
-        for class_name in event_classes
-    }
+    return deltas
+
+
+def accumulated_intermediate_statistics_from_deltas(deltas):
+    multi_label_statistics = statistics.accumulated_intermediate_statistics_from_deltas(deltas)
+    for _, stats_cls in multi_label_statistics.values():
+        stats_cls['n_sys'] = stats_cls['tps'] + stats_cls['fps']
+        stats_cls['n_ref'] = stats_cls['tps'][0]
+        fns = stats_cls['n_ref'] - stats_cls['tps']
+        stats_cls['tns'] = stats_cls['n_sys'][0] - stats_cls['n_sys'] - fns
+    return multi_label_statistics
+
+
+def accumulated_intermediate_statistics(scores, ground_truth, *, deltas=None, num_jobs=1):
+    """
+
+    Args:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            tags for each audio clip or a file path from where the ground truth
+            can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
+
+    Returns:
+
+    """
+    if deltas is None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth, tagging=True)
+        deltas = intermediate_statistics_deltas(
+            scores=scores, ground_truth=ground_truth, num_jobs=num_jobs,
+        )
+    else:
+        audio_ids = list(deltas.keys())
+    return accumulated_intermediate_statistics_from_deltas(deltas), audio_ids
 
 
 def _worker(audio_ids, scores, ground_truth, event_classes=None, output_queue=None):
-    clip_scores = None
-    clip_targets = None
+    deltas = {}
     for audio_id in audio_ids:
         scores_k = scores[audio_id]
         timestamps, _ = validate_score_dataframe(
@@ -113,12 +113,9 @@ def _worker(audio_ids, scores, ground_truth, event_classes=None, output_queue=No
                 f'ground truth contains unknown tags. Unknown tags: '
                 f'{unknown_tags}; Known tags: {event_classes};'
             )
-        if clip_scores is None:
-            clip_scores = {class_name: [] for class_name in event_classes}
-            clip_targets = {class_name: [] for class_name in event_classes}
+        deltas[audio_id] = {}
         for c, class_name in enumerate(event_classes):
-            clip_scores[class_name].append(scores_k[c])
-            clip_targets[class_name].append(class_name in gt_k)
+            deltas[audio_id][class_name] = ([scores_k[c]], {'tps': [class_name in gt_k], 'fps': [class_name not in gt_k]})
     if output_queue is not None:
-        output_queue.put((clip_scores, clip_targets))
-    return clip_scores, clip_targets
+        output_queue.put(deltas)
+    return deltas

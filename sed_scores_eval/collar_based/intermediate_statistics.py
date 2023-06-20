@@ -2,18 +2,20 @@ import numpy as np
 from sed_eval.util import bipartite_match
 from sed_scores_eval.utils.scores import validate_score_dataframe
 from sed_scores_eval.base_modules.ground_truth import event_counts_and_durations
-from sed_scores_eval.base_modules.statistics import accumulated_intermediate_statistics
-from sed_scores_eval.base_modules.io import parse_inputs
+from sed_scores_eval.base_modules import statistics
+from sed_scores_eval.base_modules.io import parse_inputs, parse_ground_truth
+from sed_scores_eval.base_modules.detection import onset_deltas
 
 
-def intermediate_statistics(
+def intermediate_statistics_deltas(
     scores, ground_truth, onset_collar, offset_collar, offset_collar_rate=0.,
     return_onset_offset_dist_sum=False, time_decimals=6, num_jobs=1,
 ):
-    """Compute collar-based intermediate statistics over all audio files for
-    all event classes and decision thresholds. See [1] for details about
-    collar-based (event-based) evaluation. See [2] for details about the joint
-    computation of intermediate statistics for arbitrary decision thresholds.
+    """Compute collar-based intermediate statistics deltas for all audio files
+    for all event classes and decision thresholds. See [1] for details about
+    collar-based (event-based) evaluation. See [2] for details about the deltas
+    and the joint computation of intermediate statistics for arbitrary decision
+    thresholds.
 
     [1] Annamaria Mesaros, Toni Heittola, and Tuomas Virtanen,
     "Metrics for polyphonic sound event detection",
@@ -50,6 +52,63 @@ def intermediate_statistics(
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
+    Returns:
+        deltas (dict of dicts of tuples): For each audio clip for each event class:
+            change_point_scores (dict of dicts): 1d array of scores at which the
+                intermediate statistics change, when the threshold falls below
+                it, for that particular clip and class.
+            dict of delta values: provides for each intermediate statistic a
+                1d array of the delta (change), when the threshold falls below
+                each of the change_point_scores.
+                Required intermediate statistics deltas:
+                  "tps": true positives count array
+                  "fps": false positives count array
+
+    """
+    scores, ground_truth, keys = parse_inputs(scores, ground_truth)
+    _, event_classes = validate_score_dataframe(
+        scores[keys[0]])
+    return statistics.intermediate_statistics_deltas(
+        scores, ground_truth,
+        intermediate_statistics_fn=statistics_fn,
+        acceleration_fn=acceleration_fn,
+        onset_collar=onset_collar, offset_collar=offset_collar,
+        offset_collar_rate=offset_collar_rate,
+        return_onset_offset_dist_sum=return_onset_offset_dist_sum,
+        time_decimals=time_decimals, num_jobs=num_jobs,
+    )
+
+
+def accumulated_intermediate_statistics_from_deltas(deltas, ground_truth):
+    """Compute collar-based intermediate statistics over all audio files
+    for all event classes and decision thresholds. See [1] for details about
+    collar-based (event-based) evaluation. See [2] for details about the joint
+    computation of intermediate statistics for arbitrary decision thresholds.
+
+    [1] Annamaria Mesaros, Toni Heittola, and Tuomas Virtanen,
+    "Metrics for polyphonic sound event detection",
+    Applied Sciences, vol. 6, pp. 162, 2016
+
+    [2] J.Ebbers, R.Serizel, and R.Haeb-Umbach
+    "Threshold-Independent Evaluation of Sound Event Detection Scores",
+    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
+    2022
+
+    Args:
+        deltas (dict of dicts of tuples): For each audio clip for each event class:
+            change_point_scores (dict of dicts): 1d array of scores at which the
+                intermediate statistics change, when the threshold falls below
+                it, for that particular clip and class.
+            dict of delta values: provides for each intermediate statistic a
+                1d array of the delta (change), when the threshold falls below
+                each of the change_point_scores.
+                Required intermediate statistics deltas:
+                  "tps": true positives count array
+                  "fps": false positives count array
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+
     Returns (dict of tuples): for each event class a tuple of 1d scores array
         and a dict of intermediate statistics with the following keys
         (where each array has the same length as the scores array):
@@ -58,17 +117,7 @@ def intermediate_statistics(
             "n_ref": integer number of ground truth events
 
     """
-    scores, ground_truth, keys = parse_inputs(scores, ground_truth)
-    _, event_classes = validate_score_dataframe(
-        scores[keys[0]])
-    multi_label_statistics = accumulated_intermediate_statistics(
-        scores, ground_truth,
-        intermediate_statistics_fn=statistics_fn,
-        onset_collar=onset_collar, offset_collar=offset_collar,
-        offset_collar_rate=offset_collar_rate,
-        return_onset_offset_dist_sum=return_onset_offset_dist_sum,
-        time_decimals=time_decimals, num_jobs=num_jobs,
-    )
+    multi_label_statistics = statistics.accumulated_intermediate_statistics_from_deltas(deltas)
     n_ref, _ = event_counts_and_durations(
         ground_truth, event_classes=multi_label_statistics.keys()
     )
@@ -76,6 +125,43 @@ def intermediate_statistics(
         class_name: (cp_scores_cls, {**stats_cls, 'n_ref': n_ref[class_name]})
         for class_name, (cp_scores_cls, stats_cls) in multi_label_statistics.items()
     }
+
+
+def accumulated_intermediate_statistics(
+    scores, ground_truth, *, deltas=None,
+    onset_collar, offset_collar, offset_collar_rate=0.,
+    return_onset_offset_dist_sum=False, time_decimals=6, num_jobs=1,
+):
+    """Cascade of `intermediate_statistics_deltas` and `accumulated_intermediate_statistics_from_deltas`.
+
+    Args:
+        scores:
+        ground_truth:
+        deltas:
+        onset_collar:
+        offset_collar:
+        offset_collar_rate:
+        return_onset_offset_dist_sum:
+        time_decimals:
+        num_jobs:
+
+    Returns:
+
+    """
+    if deltas is None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+        deltas = intermediate_statistics_deltas(
+            scores, ground_truth,
+            onset_collar=onset_collar, offset_collar=offset_collar,
+            offset_collar_rate=offset_collar_rate,
+            return_onset_offset_dist_sum=return_onset_offset_dist_sum,
+            time_decimals=time_decimals, num_jobs=num_jobs,
+        )
+    else:
+        audio_ids = list(deltas.keys())
+        ground_truth = parse_ground_truth(
+            ground_truth, audio_ids=audio_ids, additional_ids_ok=True)
+    return accumulated_intermediate_statistics_from_deltas(deltas, ground_truth), audio_ids
 
 
 def statistics_fn(
@@ -120,6 +206,7 @@ def statistics_fn(
         return_onset_offset_dist_sum: If True, return summed distances between
             predicted and true on-/offsets (for true positive predictions),
             which allows to compute and compensate biases.
+            #ToDo: add on-/offset bias compensation
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, detections with an onset or offset right on the
             boundary of the collar may be falsely counted as false detection
@@ -178,3 +265,24 @@ def statistics_fn(
         'onset_dist_sum': onset_dist,
         'offset_dist_sum': offset_dist,
     }
+
+
+def acceleration_fn(
+        scores, timestamps,
+        target_onset_times, target_offset_times,
+        other_onset_times, other_offset_times,
+        onset_collar, offset_collar, offset_collar_rate=0.,
+        return_onset_offset_dist_sum=False,
+        time_decimals=6,
+):
+    # return np.unique(scores), None, None
+    onset_deltas_ = onset_deltas(scores)
+    change_points = np.abs(onset_deltas_) > .5
+    if len(target_onset_times) == 0:
+        cp_scores = scores[change_points]
+        deltas = {
+            'fps': onset_deltas_[change_points],
+            'tps': np.zeros_like(cp_scores),
+        }
+        return None, cp_scores, deltas
+    return None, None, None

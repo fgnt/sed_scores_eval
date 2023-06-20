@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 import pandas as pd
-from sed_scores_eval.segment_based import intermediate_statistics
+from sed_scores_eval.segment_based import accumulated_intermediate_statistics
 
 
 @pytest.mark.parametrize("seg_len", [5., 1.])
@@ -13,12 +13,12 @@ def test_triangular_scores(seg_len):
         np.array((timestamps[:-1], timestamps[1:], detection_scores)).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores},
         ground_truth={'1': [(2., 7., 'a')]},
         audio_durations={'1': len(detection_scores)},
         segment_length=seg_len,
-    )['a']
+    )[0]['a']
     if seg_len == 5.:
         expected_change_point_scores = [.7,.9,np.inf]
         expected_true_positives = [2,1,0]

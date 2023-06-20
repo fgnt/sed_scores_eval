@@ -36,7 +36,7 @@ def test_segment_based_fscore_vs_sed_eval(dataset, threshold, segment_length):
         audio_durations=None,
         threshold=threshold,
         segment_length=segment_length,
-        time_decimals=time_decimals, num_jobs=8,
+        time_decimals=time_decimals, num_jobs=4,
     )
     sed_eval_metrics = segment_based.reference.metrics(
         scores=test_data_dir / dataset / "scores",

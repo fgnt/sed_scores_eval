@@ -31,7 +31,7 @@ def test_clip_based_fscore_vs_sed_eval(dataset, threshold):
     f, p, r, stats = clip_based.fscore(
         scores=test_data_dir / dataset / "scores",
         ground_truth=test_data_dir / dataset / "ground_truth.tsv",
-        threshold=threshold, num_jobs=8,
+        threshold=threshold, num_jobs=4,
     )
     sed_eval_metrics = clip_based.reference.metrics(
         scores=test_data_dir / dataset / "scores",

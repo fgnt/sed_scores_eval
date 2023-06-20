@@ -1,5 +1,6 @@
 from . import array_ops
-from . import auc
+from . import curves
 from . import scores
 from . import visualization
+from . import parallel
 from .scores import create_score_dataframe

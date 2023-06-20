@@ -1,4 +1,4 @@
-from sed_scores_eval.segment_based.intermediate_statistics import intermediate_statistics
+from sed_scores_eval.segment_based.intermediate_statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.precision_recall import (
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics,
@@ -8,7 +8,7 @@ from sed_scores_eval.base_modules.precision_recall import (
 
 
 def precision_recall_curve(
-        scores, ground_truth, audio_durations, *,
+        scores, ground_truth, audio_durations, *, deltas=None,
         segment_length=1., time_decimals=6, num_jobs=1,
 ):
     """Compute segment-based precision-recall curve.
@@ -22,12 +22,18 @@ def precision_recall_curve(
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         segment_length: the segment length of the segments that are to be
             evaluated.
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
-            exactly matching the DTC, may be falsely counted as false detection
-            because of small deviations due to limited floating point precision.
+            chosen to high detected or ground truth events that have
+            onsets or offsets right on a segment boundary may swap over to the
+            adjacent segment because of small deviations due to limited
+            floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
@@ -43,8 +49,8 @@ def precision_recall_curve(
              'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         audio_durations=audio_durations, segment_length=segment_length,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
@@ -54,7 +60,7 @@ def precision_recall_curve(
 
 
 def fscore_curve(
-        scores, ground_truth, audio_durations, *,
+        scores, ground_truth, audio_durations, *, deltas=None,
         segment_length=1., beta=1., time_decimals=6, num_jobs=1,
 ):
     """Compute segment-based f-scores with corresponding precisions, recalls
@@ -69,13 +75,19 @@ def fscore_curve(
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         segment_length: the segment length of the segments that are to be
             evaluated.
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
-            exactly matching the DTC, may be falsely counted as false detection
-            because of small deviations due to limited floating point precision.
+            chosen to high detected or ground truth events that have
+            onsets or offsets right on a segment boundary may swap over to the
+            adjacent segment because of small deviations due to limited
+            floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
@@ -93,8 +105,8 @@ def fscore_curve(
             'n_ref': integer number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         audio_durations=audio_durations, segment_length=segment_length,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
@@ -104,7 +116,7 @@ def fscore_curve(
 
 
 def fscore(
-        scores, ground_truth, audio_durations, threshold, *,
+        scores, ground_truth, audio_durations, threshold, *, deltas=None,
         segment_length, beta=1., time_decimals=6, num_jobs=1,
 ):
     """Get segment-based f-score with corresponding precision, recall and
@@ -119,14 +131,20 @@ def fscore(
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         threshold ((dict of) float): threshold that is to be evaluated.
         segment_length: the segment length of the segments that are to be
             evaluated.
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
-            exactly matching the DTC, may be falsely counted as false detection
-            because of small deviations due to limited floating point precision.
+            chosen to high detected or ground truth events that have
+            onsets or offsets right on a segment boundary may swap over to the
+            adjacent segment because of small deviations due to limited
+            floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
@@ -141,8 +159,8 @@ def fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         audio_durations=audio_durations, segment_length=segment_length,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
@@ -152,7 +170,7 @@ def fscore(
 
 
 def best_fscore(
-        scores, ground_truth, audio_durations, *,
+        scores, ground_truth, audio_durations, *, deltas=None,
         segment_length=1., min_precision=0., min_recall=0., beta=1.,
         time_decimals=6, num_jobs=1,
 ):
@@ -169,6 +187,11 @@ def best_fscore(
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         segment_length: the segment length of the segments that are to be
             evaluated.
         min_precision: the minimum precision that must be achieved.
@@ -177,9 +200,10 @@ def best_fscore(
             fscore, precision, recall and threshold of 0,1,0,inf are returned.
         beta: \beta parameter for f-score computation
         time_decimals (int): the decimal precision used for evaluation. If
-            chosen to high, e.g., a detection with an ground truth intersection
-            exactly matching the DTC, may be falsely counted as false detection
-            because of small deviations due to limited floating point precision.
+            chosen to high detected or ground truth events that have
+            onsets or offsets right on a segment boundary may swap over to the
+            adjacent segment because of small deviations due to limited
+            floating point precision.
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
@@ -198,8 +222,8 @@ def best_fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         audio_durations=audio_durations, segment_length=segment_length,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )

@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sed_scores_eval.clip_based import intermediate_statistics
+from sed_scores_eval.clip_based import accumulated_intermediate_statistics
 
 
 def test_triangular_scores():
@@ -17,10 +17,10 @@ def test_triangular_scores():
         )).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores_1, '2': scores_2},
         ground_truth={'1': ['a'], '2': []},
-    )['a']
+    )[0]['a']
     expected_change_point_scores = [.4,.9,np.inf]
     expected_true_positives = [1,1,0]
     expected_false_positives = [1,0,0]

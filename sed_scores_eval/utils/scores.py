@@ -113,7 +113,10 @@ def validate_score_dataframe(scores, timestamps=None, event_classes=None):
         raise ValueError(
             f'timestamps from file {timestamps_from_df} do not match provided timestamps {timestamps}.'
         )
-    return timestamps_from_df, column_names[2:]
+    event_classes = column_names[2:]
+    for event_class in event_classes:
+        assert "." not in event_class, ('class names must not contain "."', event_class)
+    return timestamps_from_df, event_classes
 
 
 def get_unique_thresholds(scores):

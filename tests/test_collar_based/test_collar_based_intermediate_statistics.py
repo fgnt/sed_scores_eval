@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 import pandas as pd
-from sed_scores_eval.collar_based import intermediate_statistics
+from sed_scores_eval.collar_based import accumulated_intermediate_statistics
 
 
 @pytest.mark.parametrize("t_step", [.2, 1.])
@@ -12,11 +12,11 @@ def test_paper_example(t_step):
         np.array((timestamps[:-1], timestamps[1:], detection_scores)).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores},
         ground_truth={'1': [(2.*t_step, 7.*t_step, 'a')]},
         onset_collar=t_step, offset_collar=t_step,
-    )['a']
+    )[0]['a']
     expected_change_point_scores = [.3,.6,.7,np.inf]
     expected_true_positives = [0,1,0,0]
     expected_false_positives = [1,0,1,0]
@@ -41,7 +41,7 @@ def test_accumulated_statistics(t_step, num_jobs):
         np.array((timestamps[:-1], timestamps[1:], detection_scores)).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores, '2': scores},
         ground_truth={
             '1': [(2.*t_step, 7.*t_step, 'a')],
@@ -49,7 +49,7 @@ def test_accumulated_statistics(t_step, num_jobs):
         },
         onset_collar=t_step, offset_collar=t_step,
         num_jobs=num_jobs,
-    )['a']
+    )[0]['a']
     expected_change_point_scores = [.3,.6,.7,np.inf]
     expected_true_positives = [0,2,0,0]
     expected_false_positives = [2,0,2,0]
@@ -73,11 +73,11 @@ def test_two_events(collar):
         np.array((timestamps[:-1], timestamps[1:], detection_scores)).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores},
         ground_truth={'1': [(0.,2.5,'a'), (4.5,8.5,'a')]},
         onset_collar=collar, offset_collar=collar,
-    )['a']
+    )[0]['a']
     expected_change_point_scores = [0,3,4,np.inf]
     expected_num_detections = [1,2,1,0]
     if collar < .5:
@@ -110,11 +110,11 @@ def test_zeros(collar):
         np.array((timestamps[:-1], timestamps[1:], detection_scores)).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores},
         ground_truth={'1': [(0.,2.5,'a'), (4.5,8.5,'a')]},
         onset_collar=collar, offset_collar=collar,
-    )['a']
+    )[0]['a']
     expected_change_point_scores = [0.,np.inf]
     if collar < 4.5:
         expected_true_positives = [0,0]
@@ -141,11 +141,11 @@ def test_spawn_at_first_score(collar):
         np.array((timestamps[:-1], timestamps[1:], detection_scores)).T,
         columns=['onset', 'offset', 'a'],
     )
-    change_point_scores, stats = intermediate_statistics(
+    change_point_scores, stats = accumulated_intermediate_statistics(
         scores={'1': scores},
         ground_truth={'1': [(0.,1.,'a')]},
         onset_collar=collar, offset_collar=collar,
-    )['a']
+    )[0]['a']
     expected_change_point_scores = [9.-collar, 10., np.inf]
     expected_true_positives = [0, 1, 0]
     expected_false_positives = [1, 0, 0]

@@ -1,5 +1,5 @@
 import numpy as np
-from sed_scores_eval.utils.curves import get_curve_idx_for_threshold
+from sed_scores_eval.utils.curves import get_curve_idx_for_threshold, xsort
 
 
 def precision_recall_curve_from_intermediate_statistics(
@@ -30,13 +30,10 @@ def precision_recall_curve_from_intermediate_statistics(
 
     """
     if isinstance(scores_intermediate_statistics, dict):
-        p, r, scores, intermediate_stats = {}, {}, {}, {}
+        pr_curves = {}
         for class_name, scores_stats in scores_intermediate_statistics.items():
-            (
-                p[class_name], r[class_name], scores[class_name],
-                intermediate_stats[class_name]
-            ) = precision_recall_curve_from_intermediate_statistics(scores_stats)
-        return p, r, scores, intermediate_stats
+            pr_curves[class_name] = precision_recall_curve_from_intermediate_statistics(scores_stats)
+        return pr_curves
 
     if not isinstance(scores_intermediate_statistics, (list, tuple)):
         raise ValueError(
@@ -64,19 +61,8 @@ def precision_recall_curve_from_intermediate_statistics(
         r = np.ones_like(p)
     else:
         r = stats['tps'] / stats['n_ref']
-    sort_idx = sorted(np.arange(len(r)).tolist(), key=lambda i: (r[i], p[i]))
 
-    def sort_stat(stat):
-        if np.isscalar(stat):
-            return stat
-        if isinstance(stat, (list, tuple)):
-            return [sort_stat(stat_i) for stat_i in stat]
-        return stat[sort_idx]
-
-    return (
-        p[sort_idx], r[sort_idx], scores[sort_idx],
-        {key: sort_stat(stat) for key, stat in stats.items()}
-    )
+    return xsort(p, r, scores, stats)
 
 
 def fscore_from_precision_recall(precision, recall, *, beta=1.):
@@ -126,30 +112,19 @@ def fscore_curve_from_intermediate_statistics(
             'fps': 1d np.ndarray of false positive counts for each score
             'n_ref': integer number of ground truth events
 
-
     """
     if isinstance(scores_intermediate_statistics, dict):
-        f, p, r, scores, intermediate_stats = {}, {}, {}, {}, {}
+        fscore_curves = {}
         for class_name, scores_stats in scores_intermediate_statistics.items():
-            (
-                f[class_name], p[class_name], r[class_name],
-                scores[class_name], intermediate_stats[class_name]
-            ) = fscore_curve_from_intermediate_statistics(
+            fscore_curves[class_name] = fscore_curve_from_intermediate_statistics(
                 scores_stats, beta=beta,
             )
-        return f, p, r, scores, intermediate_stats
+        return fscore_curves
     p, r, scores, intermediate_stats = precision_recall_curve_from_intermediate_statistics(
         scores_intermediate_statistics
     )
-    sort_idx = np.argsort(scores)
-    scores = scores[sort_idx]
-    p = p[sort_idx]
-    r = r[sort_idx]
     f_beta = fscore_from_precision_recall(p, r, beta=beta)
-    intermediate_stats = {
-        key: stat if np.isscalar(stat) else stat[sort_idx]
-        for key, stat in intermediate_stats.items()
-    }
+    f_beta, scores, p, r, intermediate_stats = xsort(f_beta, scores, p, r, intermediate_stats)
     return f_beta, p, r, scores, intermediate_stats
 
 
@@ -271,8 +246,7 @@ def single_fscore_from_intermediate_statistics(
                 intermediate_stats[class_name]
             ) = single_fscore_from_intermediate_statistics(
                 scores_stats,
-                threshold[class_name]
-                if isinstance(threshold, dict)
+                threshold[class_name] if isinstance(threshold, dict)
                 else threshold,
                 beta=beta,
             )

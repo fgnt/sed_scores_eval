@@ -1,4 +1,4 @@
-from sed_scores_eval.clip_based.intermediate_statistics import intermediate_statistics
+from sed_scores_eval.clip_based.intermediate_statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.precision_recall import (
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics,
@@ -7,7 +7,7 @@ from sed_scores_eval.base_modules.precision_recall import (
 )
 
 
-def precision_recall_curve(scores, ground_truth, *, num_jobs=1):
+def precision_recall_curve(scores, ground_truth, *, deltas=None, num_jobs=1):
     """Compute clip-based precision-recall curve.
 
     Args:
@@ -18,6 +18,11 @@ def precision_recall_curve(scores, ground_truth, *, num_jobs=1):
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
@@ -33,8 +38,9 @@ def precision_recall_curve(scores, ground_truth, *, num_jobs=1):
              'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth, num_jobs=num_jobs,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
+        num_jobs=num_jobs,
     )
     return precision_recall_curve_from_intermediate_statistics(
         intermediate_stats
@@ -42,7 +48,7 @@ def precision_recall_curve(scores, ground_truth, *, num_jobs=1):
 
 
 def fscore_curve(
-        scores, ground_truth, *, beta=1., num_jobs=1,
+        scores, ground_truth, *, deltas=None, beta=1., num_jobs=1,
 ):
     """Compute clip-based f-scores with corresponding precisions, recalls and
     intermediate statistics for various operating points
@@ -55,6 +61,11 @@ def fscore_curve(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         beta: \beta parameter for f-score computation
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
@@ -73,8 +84,9 @@ def fscore_curve(
             'n_ref': integer number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth, num_jobs=num_jobs,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
+        num_jobs=num_jobs,
     )
     return fscore_curve_from_intermediate_statistics(
         intermediate_stats, beta=beta,
@@ -82,7 +94,7 @@ def fscore_curve(
 
 
 def fscore(
-        scores, ground_truth, threshold, *, beta=1., num_jobs=1,
+        scores, ground_truth, threshold, *, deltas=None, beta=1., num_jobs=1,
 ):
     """Get clip-based f-score with corresponding precision, recall and
     intermediate statistics for a specific decision threshold
@@ -95,6 +107,11 @@ def fscore(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         threshold ((dict of) float): threshold that is to be evaluated.
         beta: \beta parameter for f-score computation
         num_jobs (int): the number of processes to use. Default is 1 in which
@@ -111,8 +128,9 @@ def fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth, num_jobs=num_jobs,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
+        num_jobs=num_jobs,
     )
     return single_fscore_from_intermediate_statistics(
         intermediate_stats, threshold=threshold, beta=beta,
@@ -120,7 +138,7 @@ def fscore(
 
 
 def best_fscore(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         min_precision=0., min_recall=0., beta=1., num_jobs=1
 ):
     """Get the best possible (macro-averaged) clip-based f-score with
@@ -135,6 +153,11 @@ def best_fscore(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         min_precision: the minimum precision that must be achieved.
         min_recall: the minimum recall that must be achieved. If the
             constraint(s) cannot be achieved at any threshold, however,
@@ -158,8 +181,9 @@ def best_fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth, num_jobs=num_jobs,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
+        num_jobs=num_jobs,
     )
     return best_fscore_from_intermediate_statistics(
         intermediate_stats, beta=beta,

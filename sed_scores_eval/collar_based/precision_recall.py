@@ -1,14 +1,17 @@
-from sed_scores_eval.collar_based.intermediate_statistics import intermediate_statistics
+from sed_scores_eval.collar_based.intermediate_statistics import (
+    accumulated_intermediate_statistics,
+)
 from sed_scores_eval.base_modules.precision_recall import (
     single_fscore_from_intermediate_statistics,
     best_fscore_from_intermediate_statistics,
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics
 )
+from sed_scores_eval.utils import parallel
 
 
 def precision_recall_curve(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         onset_collar, offset_collar, offset_collar_rate=0.,
         time_decimals=6, num_jobs=1,
 ):
@@ -27,6 +30,11 @@ def precision_recall_curve(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         onset_collar (float): allowed onset deviation in seconds
         offset_collar (float): (at least) allowed offset deviation in seconds
         offset_collar_rate (float): (at least) allowed offset deviation as a
@@ -54,8 +62,8 @@ def precision_recall_curve(
              'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -66,7 +74,7 @@ def precision_recall_curve(
 
 
 def fscore_curve(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         onset_collar, offset_collar, offset_collar_rate=0.,
         beta=1., time_decimals=6, num_jobs=1,
 ):
@@ -81,6 +89,11 @@ def fscore_curve(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         onset_collar (float): allowed onset deviation in seconds
         offset_collar (float): (at least) allowed offset deviation in seconds
         offset_collar_rate (float): (at least) allowed offset deviation as a
@@ -111,8 +124,8 @@ def fscore_curve(
             'n_ref': integer number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -123,7 +136,7 @@ def fscore_curve(
 
 
 def fscore(
-        scores, ground_truth, threshold, *,
+        scores, ground_truth, threshold, *, deltas=None,
         onset_collar, offset_collar, offset_collar_rate=0., beta=1.,
         return_onset_offset_dist_sum=False, time_decimals=6, num_jobs=1,
 ):
@@ -138,6 +151,11 @@ def fscore(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         threshold ((dict of) float): threshold that is to be evaluated.
         onset_collar (float): allowed onset deviation in seconds
         offset_collar (float): (at least) allowed offset deviation in seconds
@@ -169,8 +187,22 @@ def fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
+        # batch input
+        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
+        f, p, r, stats = list(zip(*parallel.map(
+            (scores, deltas), arg_keys=('scores', 'deltas'),
+            func=fscore, max_jobs=num_jobs,
+            ground_truth=ground_truth, threshold=threshold,
+            onset_collar=onset_collar, offset_collar=offset_collar,
+            offset_collar_rate=offset_collar_rate, beta=beta,
+            return_onset_offset_dist_sum=return_onset_offset_dist_sum,
+            time_decimals=time_decimals,
+            num_jobs=num_jobs//batch_size,
+        )))
+        return f, p, r, stats
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
         return_onset_offset_dist_sum=return_onset_offset_dist_sum,
@@ -182,7 +214,7 @@ def fscore(
 
 
 def best_fscore(
-        scores, ground_truth, *,
+        scores, ground_truth, *, deltas=None,
         onset_collar, offset_collar, offset_collar_rate=0.,
         min_precision=0., min_recall=0., beta=1.,
         time_decimals=6, num_jobs=1,
@@ -199,6 +231,11 @@ def best_fscore(
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         onset_collar (float): allowed onset deviation in seconds
         offset_collar (float): (at least) allowed offset deviation in seconds
         offset_collar_rate (float): (at least) allowed offset deviation as a
@@ -234,8 +271,8 @@ def best_fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
         time_decimals=time_decimals, num_jobs=num_jobs,

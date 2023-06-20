@@ -1,10 +1,10 @@
 import numpy as np
-from pathlib import Path
 from scipy.interpolate import interp1d
 from sed_scores_eval.utils.array_ops import cummax, get_first_index_where
-from sed_scores_eval.base_modules.io import parse_inputs, read_audio_durations
-from sed_scores_eval.utils.auc import staircase_auc
-from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics
+from sed_scores_eval.base_modules.io import parse_audio_durations
+from sed_scores_eval.utils.curves import xsort, staircase_auc
+from sed_scores_eval.intersection_based.intermediate_statistics import accumulated_intermediate_statistics
+from sed_scores_eval.utils import parallel
 
 seconds_per_unit_of_time = {
     'second': 1.,
@@ -14,7 +14,7 @@ seconds_per_unit_of_time = {
 
 
 def psds(
-        scores, ground_truth, audio_durations, *,
+        scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6, num_jobs=1,
@@ -41,6 +41,11 @@ def psds(
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         cttc_threshold (float): cross trigger tolerance criterion threshold
@@ -68,6 +73,7 @@ def psds(
     Returns:
         psds (float): Polyphonic Sound Detection Score (PSDS), i.e., the area
             under the PSD ROC Curve up to max_efpr normalized by max_efpr.
+        single_class_psds (dict):
         psd_roc (tuple of 1d np.ndarrays): tuple of effective True Positive
             Rates and effective False Positive Rates.
         single_class_psd_rocs (dict of tuples of 1d np.ndarrays):
@@ -75,24 +81,37 @@ def psds(
             for each event class.
 
     """
-    effective_tp_rate, effective_fp_rate, single_class_psds_rocs = psd_roc(
-        scores=scores, ground_truth=ground_truth, audio_durations=audio_durations,
+    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
+        # batch input
+        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
+        return list(zip(*parallel.map(
+            (scores, deltas), arg_keys=('scores', 'deltas'),
+            func=psds, max_jobs=num_jobs,
+            ground_truth=ground_truth, audio_durations=audio_durations,
+            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
+            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
+            time_decimals=time_decimals,
+            num_jobs=num_jobs//batch_size,
+        )))
+    (effective_tp_rate, effective_fp_rate), single_class_psd_rocs = psd_roc(
+        scores=scores, ground_truth=ground_truth,
+        audio_durations=audio_durations, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
         unit_of_time=unit_of_time, max_efpr=max_efpr,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
-    psd_roc_auc = staircase_auc(
-        effective_tp_rate, effective_fp_rate, max_x=max_efpr)
+    psds_value = psds_from_psd_roc(
+        effective_tp_rate, effective_fp_rate, max_efpr)
     return (
-        psd_roc_auc/max_efpr,
-        (effective_tp_rate, effective_fp_rate),
-        single_class_psds_rocs
+        psds_value, (effective_tp_rate, effective_fp_rate),
+        single_class_psd_rocs
     )
 
 
 def psd_roc(
-        scores, ground_truth, audio_durations, *,
+        scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6, num_jobs=1,
@@ -119,6 +138,11 @@ def psd_roc(
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
         dtc_threshold (float): detection tolerance criterion threshold
         gtc_threshold (float): ground truth intersection criterion threshold
         cttc_threshold (float): cross trigger tolerance criterion threshold
@@ -162,100 +186,28 @@ def psd_roc(
                 'alpha_ct is not 0 but no cttc_threshold has been provided.'
             )
 
-    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
-    if not isinstance(audio_durations, (dict, str, Path)):
-        raise ValueError(
-            f'audio_durations must be dict, str or Path but '
-            f'{type(audio_durations)} was given.'
-        )
-    if isinstance(audio_durations, (str, Path)):
-        audio_durations = Path(audio_durations)
-        assert audio_durations.is_file(), audio_durations
-        audio_durations = read_audio_durations(audio_durations)
-
-    if not audio_durations.keys() == set(audio_ids):
-        raise ValueError(
-            f'audio_durations audio ids do not match audio ids in scores. '
-            f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
-            f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
-        )
-    dataset_duration = sum(audio_durations.values())
-
-    intermediate_stats = intermediate_statistics(
-        scores=scores, ground_truth=ground_truth,
+    intermediate_statistics, audio_ids = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
-    return psd_roc_from_intermediate_statistics(
-        intermediate_stats,
-        dataset_duration=dataset_duration,
-        alpha_ct=alpha_ct, alpha_st=alpha_st,
-        unit_of_time=unit_of_time, max_efpr=max_efpr
-    )
 
-
-def psd_roc_from_intermediate_statistics(
-        scores_intermediate_statistics, dataset_duration,
-        alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-):
-    """Computes Polyphonic Sound Detection ROC (PSD ROC) [1] from precomputed
-    intermediate statistics curves.
-
-    [1] C. Bilen, G. Ferroni, F. Tuveri, J. Azcarreta and S. Krstulovic,
-    "A Framework for the Robust Evaluation of Sound Event Detection",
-    in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
-    2020, pp. 61–65
-
-    Args:
-        scores_intermediate_statistics (dict of tuples): tuple of scores array
-            and dict of intermediate_statistics with the following key value
-            pairs for each event class:
-             'tps' (1d np.ndarray): true positive counts for each score
-             'fps' (1d np.ndarray): false positive counts for each score
-             'cts' (2d np.ndarray): cross triggers with each of the other
-                classes (second dim) for each score (first dim)
-             'n_ref' (int): number of ground truth events
-             't_ref_ofther' (list of float): total ground truth event durations
-                for each of the other classes.
-        dataset_duration (float): total dataset duration, i.e., the sum of the
-            individual file durations.
-        alpha_ct (float): parameter for penalizing cross triggers.
-            More specifically, it is the weight of the cross trigger rate
-            (averaged over all other classes) that is added to the False
-            Positive Rate (FPR) yielding the effective FPR (eFPR).
-        alpha_st (float): parameter for penalizing instability across classes.
-            More specifically, it is the weight of the standard deviation of
-            the per-class ROCs, that is subtracted from the mean of the
-            per-class ROCs.
-        unit_of_time (str): the unit of time \in {second, minute, hour} to be
-            used for computation of the eFPR (which is defined as rate per unit
-            of time). Default is hour.
-        max_efpr (float): the maximum eFPR for which the system is evaluated,
-            i.e., until where the Area under PSD ROC Curve is computed.
-
-    Returns:
-        etpr (1d np.ndarray): effective True Positive Rates.
-        efpr (1d np.ndarray): effective False Positive Rates.
-        single_class_psd_rocs (dict of tuples of 1d np.ndarrays):
-            tuple of True Positive Rates and effective False Positive Rates
-            for each event class.
-
-    """
-
-    if not isinstance(scores_intermediate_statistics, dict):
-        raise ValueError(
-            f'scores_intermediate_statistics must be dict '
-            f'but {type(scores_intermediate_statistics)} was given.'
-        )
+    audio_durations = parse_audio_durations(
+        audio_durations, audio_ids=audio_ids, additional_ids_ok=(deltas is not None))
+    dataset_duration = sum(audio_durations.values())
 
     single_class_psd_rocs = _single_class_roc_from_intermediate_statistics(
-        scores_intermediate_statistics,
+        intermediate_statistics,
         dataset_duration=dataset_duration,
         alpha_ct=alpha_ct, unit_of_time=unit_of_time, max_efpr=max_efpr,
     )
-    effective_tp_rate, overall_effective_fp_rates = _psd_roc_from_single_class_rocs(single_class_psd_rocs, alpha_st=alpha_st, max_efpr=max_efpr)
-    return effective_tp_rate, overall_effective_fp_rates, single_class_psd_rocs
+    effective_tp_rate, overall_effective_fp_rates = multi_class_psd_roc_from_single_class_psd_rocs(single_class_psd_rocs, alpha_st=alpha_st, max_efpr=max_efpr)
+    return (effective_tp_rate, overall_effective_fp_rates), single_class_psd_rocs
+
+
+def psds_from_psd_roc(tpr, fpr, max_fpr):
+    return staircase_auc(tpr, fpr, max_x=max_fpr) / max_fpr
 
 
 def _single_class_roc_from_intermediate_statistics(
@@ -269,10 +221,10 @@ def _single_class_roc_from_intermediate_statistics(
             dict of intermediate_statistics with the following key value pairs:
              'tps' (1d np.ndarray): true positive counts for each score
              'fps' (1d np.ndarray): false positive counts for each score
-             'cts' (2d np.ndarray): cross triggers with each of the other
-                classes (second dim) for each score (first dim)
+             'cts' (dict of 1d np.ndarray): cross triggers with each of the
+                other classes for each score
              'n_ref' (int): number of ground truth events
-             't_ref_ofther' (list of float): total ground truth event durations
+             't_ref_other' (dict of float): total ground truth event durations
                 for each of the other classes.
             If dict input is provided, keys are expected to be class names with
             corresponding scores/intermediate_statistics as values.
@@ -320,11 +272,13 @@ def _single_class_roc_from_intermediate_statistics(
     if alpha_ct == .0:
         effective_fp_rate = fp_rate
     else:
-        assert stats['cts'].shape == (len(scores), len(stats['t_ref_other'])), (
-            stats['cts'].shape, len(scores), len(stats['t_ref_other']))
+        assert stats['cts'].keys() == stats['t_ref_other'].keys(), (
+            stats['cts'].keys(), stats['t_ref_other'].keys())
+        assert all([value.shape == (len(scores),) for value in stats['cts'].values()]), (
+            [value.shape for value in stats['cts'].values()], len(scores))
         ct_rates = [
-            cts_i / max(t_ref_i, 1e-12)
-            for cts_i, t_ref_i in zip(stats['cts'].T, stats['t_ref_other'])
+            stats['cts'][class_name] / max(stats['t_ref_other'][class_name], 1e-12)
+            for class_name in stats['cts']
         ]
         effective_fp_rate = fp_rate + alpha_ct * np.mean(ct_rates, axis=0)
     effective_fp_rate = effective_fp_rate * seconds_per_unit_of_time[unit_of_time]
@@ -333,7 +287,7 @@ def _single_class_roc_from_intermediate_statistics(
     )
 
 
-def _psd_roc_from_single_class_rocs(single_class_psd_rocs, alpha_st, max_efpr):
+def multi_class_psd_roc_from_single_class_psd_rocs(single_class_psd_rocs, alpha_st, max_efpr):
     tp_ratios, efp_rates, *_ = list(zip(*single_class_psd_rocs.values()))
     overall_effective_fp_rates = np.unique(np.sort(np.concatenate(efp_rates)))
     interpolated_tp_ratios = []
@@ -365,11 +319,7 @@ def _psd_roc_from_single_class_rocs(single_class_psd_rocs, alpha_st, max_efpr):
 
 
 def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
-    sort_idx = sorted(
-        np.arange(len(effective_fp_rate)).tolist(),
-        key=lambda i: (effective_fp_rate[i], tp_ratio[i])
-    )
-    tp_ratio, effective_fp_rate, *other = [values[sort_idx] for values in [tp_ratio, effective_fp_rate, *other]]
+    tp_ratio, effective_fp_rate, *other = xsort(tp_ratio, effective_fp_rate, *other)
     cummax_indices = cummax(tp_ratio)[1]
     tp_ratio, effective_fp_rate, *other = [values[cummax_indices] for values in [tp_ratio, effective_fp_rate, *other]]
     effective_fp_rate, unique_efpr_indices = np.unique(
@@ -380,3 +330,10 @@ def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
         cutoff_idx = get_first_index_where(effective_fp_rate, "gt", max_efpr)
         tp_ratio, effective_fp_rate, *other = [values[:cutoff_idx] for values in [tp_ratio, effective_fp_rate, *other]]
     return (tp_ratio, effective_fp_rate, *other)
+
+
+def merge_individual_rocs_into_overall_roc(rocs):
+    tprs, efprs, scores, filter_lengths = [
+        np.concatenate(values) for values in list(zip(*rocs))
+    ]
+    return _unique_cummax_sort(tprs, efprs, scores, filter_lengths)

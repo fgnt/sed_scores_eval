@@ -33,33 +33,71 @@ def parse_inputs(scores, ground_truth, *, tagging=False):
         audio_ids:
 
     """
+    scores, audio_ids = parse_scores(scores)
+    ground_truth = parse_ground_truth(ground_truth, tagging=tagging, audio_ids=audio_ids)
+    return scores, ground_truth, audio_ids
+
+
+def parse_scores(scores):
     if not isinstance(scores, (dict, str, Path, lazy_dataset.Dataset)):
         raise ValueError(
             f'scores must be dict, str, pathlib.Path or lazy_dataset.Dataset '
             f'but {type(scores)} was given.'
         )
+    if isinstance(scores, (str, Path)):
+        scores = Path(scores)
+        scores = lazy_sed_scores_loader(scores)
+    audio_ids = sorted(scores.keys())
+    return scores, audio_ids
+
+
+def parse_ground_truth(
+        ground_truth, *,
+        tagging=False, audio_ids=None, additional_ids_ok=False
+):
     if not isinstance(ground_truth, (dict, str, Path)):
         raise ValueError(
             f'ground_truth must be dict, str or Path but {type(ground_truth)} '
             f'was given.'
         )
-    if isinstance(scores, (str, Path)):
-        scores = Path(scores)
-        scores = lazy_sed_scores_loader(scores)
-    audio_ids = sorted(scores.keys())
     if isinstance(ground_truth, (str, Path)):
         ground_truth = Path(ground_truth)
         if tagging:
             ground_truth, _ = read_ground_truth_tags(ground_truth)
         else:
             ground_truth = read_ground_truth_events(ground_truth)
-    if not ground_truth.keys() == set(audio_ids):
+    if audio_ids is not None:
+        if additional_ids_ok:
+            ground_truth = {key: ground_truth[key] for key in audio_ids}
+        elif not (ground_truth.keys() == set(audio_ids)):
+            raise ValueError(
+                f'ground_truth audio ids do not match audio_ids. '
+                f'Missing ids: {set(audio_ids) - ground_truth.keys()}. '
+                f'Additional ids: {ground_truth.keys() - set(audio_ids)}.'
+            )
+    return ground_truth
+
+
+def parse_audio_durations(audio_durations, *, audio_ids=None, additional_ids_ok=False):
+    if not isinstance(audio_durations, (dict, str, Path)):
         raise ValueError(
-            f'ground_truth audio ids do not match audio ids in scores. '
-            f'Missing ids: {set(audio_ids) - ground_truth.keys()}. '
-            f'Additional ids: {ground_truth.keys() - set(audio_ids)}.'
+            f'audio_durations must be dict, str or Path but '
+            f'{type(audio_durations)} was given.'
         )
-    return scores, ground_truth, audio_ids
+    if isinstance(audio_durations, (str, Path)):
+        audio_durations = Path(audio_durations)
+        assert audio_durations.is_file(), audio_durations
+        audio_durations = read_audio_durations(audio_durations)
+    if audio_ids is not None:
+        if additional_ids_ok:
+            audio_durations = {key: audio_durations[key] for key in audio_ids}
+        elif not (audio_durations.keys() == set(audio_ids)):
+            raise ValueError(
+                f'audio_durations audio ids do not match audio_ids. '
+                f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
+                f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
+            )
+    return audio_durations
 
 
 def write_sed_scores(scores, storage_path, *, timestamps=None, event_classes=None):
@@ -106,6 +144,22 @@ def write_sed_scores(scores, storage_path, *, timestamps=None, event_classes=Non
 
 
 def read_sed_scores(filepath):
+    """read scores from file(s)
+
+    Args:
+        filepath: path to tsv-file of a single utterance or to dir with tsv-files for the whole eval set
+
+    Returns:
+
+    """
+    filepath = Path(filepath)
+    if filepath.is_dir():
+        scores = {}
+        for file in sorted(filepath.iterdir()):
+            if not file.is_file() or not file.name.endswith('.tsv'):
+                raise ValueError(f'dir_path must only contain tsv files but contains {file}')
+            scores[file.name[:-len('.tsv')]] = read_sed_scores(file)
+        return scores
     scores = pd.read_csv(filepath, sep='\t')
     validate_score_dataframe(scores)
     return scores
