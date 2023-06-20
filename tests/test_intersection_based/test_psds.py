@@ -38,7 +38,7 @@ def test_psds_vs_psds_eval(dataset, params):
     scores = io.read_sed_scores(test_data_dir / dataset / "scores")
     scores, ground_truth, audio_ids = io.parse_inputs(scores, test_data_dir / dataset / "ground_truth.tsv")
     audio_durations = io.parse_audio_durations(test_data_dir / dataset / "audio_durations.tsv", audio_ids=audio_ids)
-    psds, psd_roc, single_class_psd_rocs = intersection_based.psds(
+    psds, single_class_psds, psd_roc, single_class_psd_rocs = intersection_based.psds(
         scores=scores,
         ground_truth=ground_truth,
         audio_durations=audio_durations,
@@ -50,7 +50,7 @@ def test_psds_vs_psds_eval(dataset, params):
     )
     thresholds = np.unique(np.concatenate([roc[2] for roc in single_class_psd_rocs.values()]))[:-1]
     (
-        psds_ref, psd_roc_ref, single_class_psd_rocs_ref
+        psds_ref, single_class_psds_ref, psd_roc_ref, single_class_psd_rocs_ref
     ) = intersection_based.reference.approximate_psds(
         scores=scores,
         ground_truth=ground_truth,

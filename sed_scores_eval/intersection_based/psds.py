@@ -104,8 +104,13 @@ def psds(
     )
     psds_value = psds_from_psd_roc(
         effective_tp_rate, effective_fp_rate, max_efpr)
+    single_class_psds = {
+        class_name: psds_from_psd_roc(tpr, efpr, max_efpr)
+        for class_name, (tpr, efpr, _) in single_class_psd_rocs.items()
+    }
     return (
-        psds_value, (effective_tp_rate, effective_fp_rate),
+        psds_value, single_class_psds,
+        (effective_tp_rate, effective_fp_rate),
         single_class_psd_rocs
     )
 

@@ -6,6 +6,7 @@ from sed_scores_eval.base_modules.io import (
 )
 from sed_scores_eval.utils.scores import validate_score_dataframe
 from sed_scores_eval.utils.array_ops import get_first_index_where
+from sed_scores_eval.intersection_based import psds_from_psd_roc
 
 
 def approximate_psds(
@@ -189,7 +190,12 @@ def approximate_psds_from_detections_dir(
             single_class_psd_rocs[key] = (
                 roc[0][:cutoff_idx], roc[1][:cutoff_idx]
             )
-    return psds_.value, (etpr, efpr), single_class_psd_rocs
+
+    single_class_psds = {
+        class_name: psds_from_psd_roc(tpr, efpr, max_efpr)
+        for class_name, (tpr, efpr) in single_class_psd_rocs.items()
+    }
+    return psds_.value, single_class_psds, (etpr, efpr), single_class_psd_rocs
 
 
 def _parse_ground_truth(ground_truth):
