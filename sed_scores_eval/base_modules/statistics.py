@@ -3,7 +3,7 @@ import multiprocessing
 from sed_scores_eval.utils.scores import validate_score_dataframe
 from sed_scores_eval.utils.nested import flatten, deflatten
 from sed_scores_eval.base_modules.ground_truth import multi_label_to_single_label_ground_truths
-from sed_scores_eval.base_modules.detection import onset_offset_curves
+from sed_scores_eval.base_modules.cy_detection import onset_offset_curves
 from sed_scores_eval.base_modules.io import parse_inputs
 
 

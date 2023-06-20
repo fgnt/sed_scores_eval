@@ -24,7 +24,8 @@ from sed_scores_eval.base_modules.precision_recall import fscore_from_sed_eval_m
     ]
 )
 @pytest.mark.parametrize("collar", [.2, .5])
-def test_collar_based_fscore_vs_sed_eval(dataset, threshold, collar):
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_collar_based_fscore_vs_sed_eval(dataset, threshold, collar, num_jobs):
     offset_collar_rate = collar
     time_decimals = 30
     test_data_dir = package_dir / 'tests' / 'data'
@@ -38,7 +39,7 @@ def test_collar_based_fscore_vs_sed_eval(dataset, threshold, collar):
         onset_collar=collar, offset_collar=collar,
         offset_collar_rate=offset_collar_rate,
         time_decimals=time_decimals,
-        num_jobs=4,
+        num_jobs=num_jobs,
     )
     sed_eval_metrics = collar_based.reference.metrics(
         scores=test_data_dir / dataset / "scores",

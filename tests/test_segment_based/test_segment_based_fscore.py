@@ -24,7 +24,8 @@ from sed_scores_eval.base_modules.precision_recall import fscore_from_sed_eval_m
     ]
 )
 @pytest.mark.parametrize("segment_length", [1., 2.])
-def test_segment_based_fscore_vs_sed_eval(dataset, threshold, segment_length):
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_segment_based_fscore_vs_sed_eval(dataset, threshold, segment_length, num_jobs):
     time_decimals = 30
     test_data_dir = package_dir / 'tests' / 'data'
     if not test_data_dir.exists():
@@ -36,7 +37,7 @@ def test_segment_based_fscore_vs_sed_eval(dataset, threshold, segment_length):
         audio_durations=None,
         threshold=threshold,
         segment_length=segment_length,
-        time_decimals=time_decimals, num_jobs=4,
+        time_decimals=time_decimals, num_jobs=num_jobs,
     )
     sed_eval_metrics = segment_based.reference.metrics(
         scores=test_data_dir / dataset / "scores",

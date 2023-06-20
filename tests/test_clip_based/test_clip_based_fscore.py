@@ -23,7 +23,8 @@ from sed_scores_eval.base_modules.precision_recall import fscore_from_sed_eval_m
         }
     ]
 )
-def test_clip_based_fscore_vs_sed_eval(dataset, threshold):
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_clip_based_fscore_vs_sed_eval(dataset, threshold, num_jobs):
     test_data_dir = package_dir / 'tests' / 'data'
     if not test_data_dir.exists():
         io.download_test_data()
@@ -31,7 +32,7 @@ def test_clip_based_fscore_vs_sed_eval(dataset, threshold):
     f, p, r, stats = clip_based.fscore(
         scores=test_data_dir / dataset / "scores",
         ground_truth=test_data_dir / dataset / "ground_truth.tsv",
-        threshold=threshold, num_jobs=4,
+        threshold=threshold, num_jobs=num_jobs,
     )
     sed_eval_metrics = clip_based.reference.metrics(
         scores=test_data_dir / dataset / "scores",

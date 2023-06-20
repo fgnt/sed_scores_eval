@@ -16,6 +16,8 @@ def onset_offset_curves(scores, timestamps, change_point_candidates=None):
     active with corresponding onset and offset times, while the later event is
     set inactive with offset_time = onset_time.
 
+    ! There is a faster implementation of this function in cy_detection.pyx !
+
     Args:
         scores (1d np.ndarray): SED scores for a single event class
         timestamps (1d np.ndarray): onset timestamps for each score plus one more
@@ -38,10 +40,10 @@ def onset_offset_curves(scores, timestamps, change_point_candidates=None):
     array([0.4, 0.6, 1. ])
     >>> np.stack((t_on, t_off), axis=-1)
     array([[[0. , 1.4],
-            [0.8, 0.8]],
+            [0. , 0. ]],
     <BLANKLINE>
            [[0.2, 1.2],
-            [0.8, 0.8]],
+            [0. , 0. ]],
     <BLANKLINE>
            [[0.2, 0.4],
             [0.8, 1.2]]])

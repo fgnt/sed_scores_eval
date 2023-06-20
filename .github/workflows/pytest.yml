@@ -28,11 +28,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install --editable .
         # if you have a requirements textfile: 
         # pip install -r requirements.txt
         pip install numpy scipy Cython pandas einops sed_eval psds_eval
         sudo apt-get install libsndfile1
+        pip install --editable .
     - name: Lint with flake8
       run: |
         conda install flake8

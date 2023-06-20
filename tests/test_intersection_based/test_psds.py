@@ -29,7 +29,8 @@ from sed_scores_eval import intersection_based, io, package_dir
         },
     ]
 )
-def test_psds_vs_psds_eval(dataset, params):
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_psds_vs_psds_eval(dataset, params, num_jobs):
 
     test_data_dir = package_dir / 'tests' / 'data'
     if not test_data_dir.exists():
@@ -46,7 +47,7 @@ def test_psds_vs_psds_eval(dataset, params):
         gtc_threshold=params['gtc_threshold'],
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
-        unit_of_time='hour', max_efpr=100., num_jobs=4, time_decimals=6,
+        unit_of_time='hour', max_efpr=100., num_jobs=num_jobs, time_decimals=6,
     )
     thresholds = np.unique(np.concatenate([roc[2] for roc in single_class_psd_rocs.values()]))[:-1]
     (
