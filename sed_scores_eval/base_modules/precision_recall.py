@@ -351,3 +351,56 @@ def fscore_from_sed_eval_metrics(sed_eval_metrics):
     p['micro_average'] = sed_eval_results_micro['f_measure']['precision']
     r['micro_average'] = sed_eval_results_micro['f_measure']['recall']
     return f, p, r
+
+
+def average_precision_from_intermediate_statistics(
+        scores_intermediate_statistics):
+    """Compute the average precision
+
+    Args:
+        scores_intermediate_statistics ((dict of) tuple): tuple of scores array
+            and dict of intermediate_statistics with the following key value
+            pairs:
+             'tps' (1d np.ndarray): true positive counts for each score
+             'fps' (1d np.ndarray): false positive counts for each score
+             'n_ref' (int): number of ground truth events
+            If dict input is provided keys are expected to be class names with
+            corresponding scores/intermediate_statistics as values.
+
+    Returns:
+        average_precision ((dict of) float): mean and class-wise average
+            precisions
+        pr_curve: Precision-Recall curve(s) as provided by
+            `precision_recall_curve_from_intermediate_statistics`
+    """
+    if isinstance(scores_intermediate_statistics, dict):
+        ap, pr_curves = {}, {}
+        for class_name, scores_stats in scores_intermediate_statistics.items():
+            ap[class_name], pr_curves[class_name] = average_precision_from_intermediate_statistics(
+                scores_stats,
+            )
+        ap['mean'] = np.mean([ap[class_name] for class_name in ap])
+        return ap, pr_curves
+
+    pr_curve = precision_recall_curve_from_intermediate_statistics(
+        scores_intermediate_statistics
+    )
+    p, r, scores, intermediate_stats = pr_curve
+    return average_precision_from_precision_recall_curve(p, r), pr_curve
+
+
+def average_precision_from_precision_recall_curve(p, r):
+    """compute average precision from Precision-Recall curve
+
+    Args:
+        p: Precision for each operating point
+        r: Recall for each operating point
+
+    Returns:
+
+    """
+    _, unique_recall_indices = np.unique(r[::-1], return_index=True)
+    unique_recall_indices = - 1 - unique_recall_indices
+    r = r[unique_recall_indices]
+    p = p[unique_recall_indices]
+    return np.sum(p[1:] * (r[1:]-r[:-1]))

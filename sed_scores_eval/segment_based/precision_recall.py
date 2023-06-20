@@ -4,6 +4,7 @@ from sed_scores_eval.base_modules.precision_recall import (
     fscore_curve_from_intermediate_statistics,
     single_fscore_from_intermediate_statistics,
     best_fscore_from_intermediate_statistics,
+    average_precision_from_intermediate_statistics,
 )
 
 
@@ -231,3 +232,49 @@ def best_fscore(
         intermediate_stats, beta=beta,
         min_precision=min_precision, min_recall=min_recall,
     )
+
+
+def average_precision(
+        scores, ground_truth, audio_durations, *, deltas=None,
+        segment_length, time_decimals=6, num_jobs=1,
+):
+    """Compute average precision
+
+    Args:
+        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+            (cf. sed_scores_eval.utils.scores.create_score_dataframe)
+            or a directory path (as str or pathlib.Path) from where the SED
+            scores can be loaded.
+        ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
+            event tuples (onset, offset, event label) for each audio clip or a
+            file path from where the ground truth can be loaded.
+        audio_durations: The duration of each audio file in the evaluation set.
+        deltas (dict of dicts of tuples): Must be deltas as returned by
+            `accumulated_intermediate_statistics_from_deltas`. If not provided,
+            deltas are computed within this function. Providing deltas is useful
+            if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
+            to save computing time.
+        segment_length: the segment length of the segments that are to be
+            evaluated.
+        time_decimals (int): the decimal precision used for evaluation. If
+            chosen to high detected or ground truth events that have
+            onsets or offsets right on a segment boundary may swap over to the
+            adjacent segment because of small deviations due to limited
+            floating point precision.
+        num_jobs (int): the number of processes to use. Default is 1 in which
+            case no multiprocessing is used.
+
+    Returns:
+        average_precision ((dict of) float): mean and class-wise average
+            precisions
+        pr_curve: Precision-Recall curve(s) as provided by
+            `precision_recall_curve_from_intermediate_statistics`
+
+    """
+    intermediate_stats, _ = accumulated_intermediate_statistics(
+        scores=scores, ground_truth=ground_truth,
+        audio_durations=audio_durations, deltas=deltas,
+        segment_length=segment_length, time_decimals=time_decimals,
+        num_jobs=num_jobs,
+    )
+    return average_precision_from_intermediate_statistics(intermediate_stats)
