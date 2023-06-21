@@ -3,7 +3,8 @@ from scipy.interpolate import interp1d
 from sed_scores_eval.utils.array_ops import cummax, get_first_index_where
 from sed_scores_eval.base_modules.io import parse_audio_durations
 from sed_scores_eval.utils.curves import xsort, staircase_auc
-from sed_scores_eval.intersection_based.intermediate_statistics import accumulated_intermediate_statistics
+from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas, accumulated_intermediate_statistics
+from sed_scores_eval.utils.bootstrap import bootstrap_from_deltas
 from sed_scores_eval.utils import parallel
 
 seconds_per_unit_of_time = {
@@ -213,6 +214,65 @@ def psd_roc(
 
 def psds_from_psd_roc(tpr, fpr, max_fpr):
     return staircase_auc(tpr, fpr, max_x=max_fpr) / max_fpr
+
+
+def bootstrapped_psds(
+        scores, ground_truth, audio_durations, *, deltas=None,
+        dtc_threshold, gtc_threshold, cttc_threshold=None,
+        alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
+        time_decimals=6, n_folds=5, n_iterations=20, num_jobs=1,
+):
+    """
+
+    Args:
+        scores:
+        ground_truth:
+        audio_durations:
+        deltas:
+        dtc_threshold:
+        gtc_threshold:
+        cttc_threshold:
+        alpha_ct:
+        alpha_st:
+        unit_of_time:
+        max_efpr:
+        time_decimals:
+        n_folds:
+        n_iterations:
+        num_jobs:
+
+    Returns:
+
+    """
+    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
+        # batch input
+        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
+        return list(zip(*parallel.map(
+            (scores, deltas), arg_keys=('scores', 'deltas'),
+            func=bootstrapped_psds, max_jobs=num_jobs,
+            ground_truth=ground_truth, audio_durations=audio_durations,
+            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
+            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
+            time_decimals=time_decimals,
+            n_folds=n_folds, n_iterations=n_iterations,
+            num_jobs=num_jobs//batch_size,
+        )))
+    if deltas is None:
+        deltas = intermediate_statistics_deltas(
+            scores=scores, ground_truth=ground_truth,
+            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+            cttc_threshold=cttc_threshold,
+            time_decimals=time_decimals, num_jobs=num_jobs,
+        )
+    return bootstrap_from_deltas(
+        psds, deltas,
+        n_folds=n_folds, n_iterations=n_iterations, num_jobs=num_jobs,
+        scores=None, ground_truth=ground_truth, audio_durations=audio_durations,
+        dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+        cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
+        unit_of_time=unit_of_time, max_efpr=max_efpr
+    )
 
 
 def _single_class_roc_from_intermediate_statistics(
