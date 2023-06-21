@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from sed_scores_eval import segment_based, utils
+from sed_scores_eval.base_modules.scores import create_score_dataframe
+from sed_scores_eval import segment_based
 
 
 def test_segment_based_area_under_roc_vs_sklearn():
@@ -13,7 +14,7 @@ def test_segment_based_area_under_roc_vs_sklearn():
         '1': [(timestamps[idx], timestamps[idx+1], 'a') for idx, t in enumerate(y_true) if t]
     }
     scores = {
-        '1': utils.create_score_dataframe(
+        '1': create_score_dataframe(
             y_scores[..., None], timestamps=timestamps, event_classes=['a']
         )
     }

@@ -1,10 +1,10 @@
-from sed_scores_eval.intersection_based.intermediate_statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.precision_recall import (
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics,
     single_fscore_from_intermediate_statistics,
     best_fscore_from_intermediate_statistics
 )
+from sed_scores_eval.intersection_based.intermediate_statistics import accumulated_intermediate_statistics
 
 
 def precision_recall_curve(

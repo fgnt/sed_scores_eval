@@ -1,9 +1,9 @@
-from sed_scores_eval.collar_based.intermediate_statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.error_rate import (
     single_error_rate_from_intermediate_statistics,
     best_error_rate_from_intermediate_statistics,
     error_rate_curve_from_intermediate_statistics
 )
+from sed_scores_eval.collar_based.intermediate_statistics import accumulated_intermediate_statistics
 
 
 def error_rate_curve(

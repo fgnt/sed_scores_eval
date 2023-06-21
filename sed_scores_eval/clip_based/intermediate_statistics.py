@@ -1,8 +1,8 @@
 import numpy as np
 import multiprocessing
+from sed_scores_eval.base_modules.scores import validate_score_dataframe
 from sed_scores_eval.base_modules import statistics
 from sed_scores_eval.base_modules.io import parse_inputs
-from sed_scores_eval.utils.scores import validate_score_dataframe
 
 
 def intermediate_statistics_deltas(

@@ -1,12 +1,12 @@
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from sed_scores_eval.utils.array_ops import get_first_index_where
+from sed_scores_eval.base_modules.scores import validate_score_dataframe
 from sed_scores_eval.base_modules.io import (
     parse_inputs, write_detections_for_multiple_thresholds
 )
-from sed_scores_eval.utils.scores import validate_score_dataframe
-from sed_scores_eval.utils.array_ops import get_first_index_where
-from sed_scores_eval.intersection_based import psds_from_psd_roc
+from sed_scores_eval.intersection_based.psds import psds_from_psd_roc
 
 
 def approximate_psds(

@@ -1,11 +1,11 @@
 import numpy as np
 from scipy.interpolate import interp1d
 from sed_scores_eval.utils.array_ops import cummax, get_first_index_where
-from sed_scores_eval.base_modules.io import parse_audio_durations
-from sed_scores_eval.utils.curves import xsort, staircase_auc
-from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas, accumulated_intermediate_statistics
-from sed_scores_eval.utils.bootstrap import bootstrap_from_deltas
 from sed_scores_eval.utils import parallel
+from sed_scores_eval.base_modules.curves import xsort, staircase_auc
+from sed_scores_eval.base_modules.bootstrap import bootstrap_from_deltas
+from sed_scores_eval.base_modules.io import parse_audio_durations
+from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas, accumulated_intermediate_statistics
 
 seconds_per_unit_of_time = {
     'second': 1.,
@@ -395,10 +395,3 @@ def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
         cutoff_idx = get_first_index_where(effective_fp_rate, "gt", max_efpr)
         tp_ratio, effective_fp_rate, *other = [values[:cutoff_idx] for values in [tp_ratio, effective_fp_rate, *other]]
     return (tp_ratio, effective_fp_rate, *other)
-
-
-def merge_individual_rocs_into_overall_roc(rocs):
-    tprs, efprs, scores, filter_lengths = [
-        np.concatenate(values) for values in list(zip(*rocs))
-    ]
-    return _unique_cummax_sort(tprs, efprs, scores, filter_lengths)

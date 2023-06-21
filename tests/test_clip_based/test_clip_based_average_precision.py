@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.metrics import average_precision_score
-from sed_scores_eval import clip_based, utils
+from sed_scores_eval.base_modules.scores import create_score_dataframe
+from sed_scores_eval import clip_based
 
 
 def test_clip_based_average_precision_vs_sklearn():
@@ -12,7 +13,7 @@ def test_clip_based_average_precision_vs_sklearn():
         for idx, t in enumerate(y_true)
     }
     scores = {
-        str(idx): utils.create_score_dataframe(
+        str(idx): create_score_dataframe(
             s[None, None], timestamps=[0., 10.], event_classes=['a']
         )
         for idx, s in enumerate(y_scores)

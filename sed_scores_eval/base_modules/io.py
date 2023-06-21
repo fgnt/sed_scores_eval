@@ -3,15 +3,12 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 import lazy_dataset
-from sed_scores_eval.utils.scores import (
-    create_score_dataframe,
-    validate_score_dataframe,
+from urllib.request import urlretrieve
+from sed_scores_eval.base_modules.scores import (
+    create_score_dataframe, validate_score_dataframe,
 )
 from sed_scores_eval.base_modules.detection import scores_to_event_list
-from sed_scores_eval.base_modules.ground_truth import (
-    onset_offset_times_to_indices
-)
-from urllib.request import urlretrieve
+from sed_scores_eval.base_modules.ground_truth import onset_offset_times_to_indices
 
 
 def parse_inputs(scores, ground_truth, *, tagging=False):

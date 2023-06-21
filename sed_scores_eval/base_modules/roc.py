@@ -1,5 +1,5 @@
 import numpy as np
-from sed_scores_eval.utils.curves import xsort, staircase_auc
+from sed_scores_eval.base_modules.curves import xsort, staircase_auc
 
 
 def roc_curve_from_intermediate_statistics(scores_intermediate_statistics):

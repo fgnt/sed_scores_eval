@@ -1,7 +1,7 @@
+import pytest
 import numpy as np
 import pandas as pd
 from sed_scores_eval.intersection_based import accumulated_intermediate_statistics
-import pytest
 
 
 @pytest.mark.parametrize("t_step", [.2, 1.])

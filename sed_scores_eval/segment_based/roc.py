@@ -1,8 +1,8 @@
-from sed_scores_eval.segment_based.intermediate_statistics import accumulated_intermediate_statistics
 from sed_scores_eval.base_modules.roc import (
     roc_curve_from_intermediate_statistics,
     auroc_from_intermediate_statistics
 )
+from sed_scores_eval.segment_based.intermediate_statistics import accumulated_intermediate_statistics
 
 
 def roc_curve(

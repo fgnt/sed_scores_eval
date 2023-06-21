@@ -1,5 +1,5 @@
 import numpy as np
-from sed_scores_eval.utils.curves import get_curve_idx_for_threshold, xsort
+from sed_scores_eval.base_modules.curves import get_curve_idx_for_threshold, xsort
 
 
 def error_rate_curve_from_intermediate_statistics(

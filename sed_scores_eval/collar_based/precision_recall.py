@@ -1,14 +1,14 @@
-from sed_scores_eval.collar_based.intermediate_statistics import (
-    accumulated_intermediate_statistics, intermediate_statistics_deltas,
-)
+from sed_scores_eval.base_modules.bootstrap import bootstrap_from_deltas
+from sed_scores_eval.utils import parallel
 from sed_scores_eval.base_modules.precision_recall import (
     single_fscore_from_intermediate_statistics,
     best_fscore_from_intermediate_statistics,
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics
 )
-from sed_scores_eval.utils.bootstrap import bootstrap_from_deltas
-from sed_scores_eval.utils import parallel
+from sed_scores_eval.collar_based.intermediate_statistics import (
+    accumulated_intermediate_statistics, intermediate_statistics_deltas,
+)
 
 
 def precision_recall_curve(

@@ -1,10 +1,9 @@
 import numpy as np
-from pathlib import Path
 import multiprocessing
+from sed_scores_eval.utils.array_ops import get_first_index_where
+from sed_scores_eval.base_modules.scores import validate_score_dataframe
 from sed_scores_eval.base_modules import statistics
 from sed_scores_eval.base_modules.io import parse_inputs, parse_audio_durations
-from sed_scores_eval.utils.scores import validate_score_dataframe
-from sed_scores_eval.utils.array_ops import get_first_index_where
 from sed_scores_eval.base_modules.ground_truth import multi_label_to_single_label_ground_truths
 
 

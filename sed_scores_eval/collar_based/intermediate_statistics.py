@@ -1,6 +1,6 @@
 import numpy as np
 from sed_eval.util import bipartite_match
-from sed_scores_eval.utils.scores import validate_score_dataframe
+from sed_scores_eval.base_modules.scores import validate_score_dataframe
 from sed_scores_eval.base_modules.ground_truth import event_counts_and_durations
 from sed_scores_eval.base_modules import statistics
 from sed_scores_eval.base_modules.io import parse_inputs, parse_ground_truth

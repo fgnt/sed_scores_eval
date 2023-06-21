@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sed_scores_eval.utils.scores import validate_score_dataframe
+from sed_scores_eval.base_modules.scores import validate_score_dataframe
 
 
 def onset_offset_curves(scores, timestamps, change_point_candidates=None):

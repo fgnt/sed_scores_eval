@@ -1,6 +1,6 @@
 import numpy as np
+from sed_scores_eval.base_modules.scores import validate_score_dataframe
 from sed_scores_eval.base_modules.io import parse_inputs
-from sed_scores_eval.utils.scores import validate_score_dataframe
 
 
 def metrics(scores, ground_truth, threshold):

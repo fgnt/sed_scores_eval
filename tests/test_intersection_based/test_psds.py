@@ -1,8 +1,9 @@
 import pytest
 import numpy as np
 from scipy.interpolate import interp1d
-from sed_scores_eval import intersection_based, io, package_dir
-from sed_scores_eval.utils.bootstrap import confidence_interval
+from sed_scores_eval.base_modules.bootstrap import confidence_interval
+from sed_scores_eval import io, package_dir
+from sed_scores_eval import intersection_based
 
 
 @pytest.mark.parametrize("dataset", ["eval"])

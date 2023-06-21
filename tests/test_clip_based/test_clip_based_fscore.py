@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
-from sed_scores_eval import clip_based, io, package_dir
+from sed_scores_eval import io, package_dir
+from sed_scores_eval import clip_based
 from sed_scores_eval.base_modules.precision_recall import fscore_from_sed_eval_metrics
 
 

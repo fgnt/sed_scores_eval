@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
-from sed_scores_eval import segment_based, io, package_dir
 from sed_scores_eval.base_modules.precision_recall import fscore_from_sed_eval_metrics
+from sed_scores_eval import io, package_dir
+from sed_scores_eval import segment_based
 
 
 @pytest.mark.parametrize("dataset", ["validation", "eval"])

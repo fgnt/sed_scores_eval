@@ -1,8 +1,9 @@
 import pytest
 import numpy as np
-from sed_scores_eval import collar_based, io, package_dir
 from sed_scores_eval.base_modules.precision_recall import fscore_from_sed_eval_metrics
-from sed_scores_eval.utils.bootstrap import confidence_interval
+from sed_scores_eval.base_modules.bootstrap import confidence_interval
+from sed_scores_eval import io, package_dir
+from sed_scores_eval import collar_based
 
 
 @pytest.mark.parametrize("dataset", ["validation", "eval"])
