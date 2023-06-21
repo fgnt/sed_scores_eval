@@ -14,6 +14,7 @@ from Cython.Build import cythonize
 ext_modules = cythonize(
     [
         'sed_scores_eval/base_modules/cy_detection.pyx',
+        'sed_scores_eval/base_modules/cy_medfilt.pyx',
      ]
 )
 
@@ -54,7 +55,7 @@ st.setup(
         'lazy_dataset',
         'einops',
         'sed_eval',
-        'Cython'
+        'Cython',
     ],
     extras_require={
         'dev': ['check-manifest'],
