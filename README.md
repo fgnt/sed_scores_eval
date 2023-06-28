@@ -42,6 +42,7 @@ If you use this package please cite our paper.
 * Intersection-based [[2]](#2): Evaluates the intersections of detected and
   ground truth events (Please also cite [[2]](#2) if you use intersection-based
   evaluation)
+* Clip-based: Audio Tagging evaluation
   
 ### Evaluation Metrics / Curves:
 * Precision-Recall (PR) Curve: Precisions for arbitrary decision thresholds
@@ -50,12 +51,23 @@ If you use this package please cite our paper.
 * F-Score @ OP: F-Score for a specified decision threshold
 * F-Score @ Best: F-Score for the optimal decision threshold (w.r.t. to the
   considered dataset)
+* Average Precision: weighted mean of precisions for arbitrary decision thresholds.
+  Weights are the increase in recall compared to the prior recall.
+* Error-Rate Curve: Error-Rates plotted over decision thresholds
+* Error-Rate @ OP: Error-Rate for a specified decision threshold
+* Error-Rate @ Best: Error-Rate for the optimal decision threshold (w.r.t. to the
+  considered dataset)
+* ROC Curve: True-Positive rates (recalls) for arbitrary decision thresholds
+  plotted over False-Positive rates
+* Area under ROC curve
 * PSD-ROC Curve: effective True Positive Rates (eTPRs) plotted over effective
-  False Positive Rates (eFPRs) as described in [[2]](#2).
+  False Positive Rates (eFPRs) as described in [[2]](#2)*.
 * PSD Score (PSDS): normalized Area under PSD-ROC Curve (until a certain
   maximum eFPR).
-  
-  (Please also cite [[2]](#2) if you use PSD-ROC and/or PSDS)
+* Post-processing independent PSD-ROC Curve (pi-PSD-ROC): effective True Positive Rates (eTPRs) plotted over effective
+  False Positive Rates (eFPRs) from different post-processings as described in [[3]](#3).
+* Post-processing independent PSDS (piPSDS): normalized Area under pi-PSD-ROC Curve (until a certain
+  maximum eFPR).
 
 
 <a id="1">[1]</a> A. Mesaros, T. Heittola, and T. Virtanen,
@@ -67,6 +79,14 @@ If you use this package please cite our paper.
 in Proc. IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP),
 2020,
 arXiv: https://arxiv.org/abs/1910.08440
+
+<a id="3">[3]</a> J. Ebbers, R. Haeb-Umbach, and R. Serizel,
+"Post-Processing Independent Evaluation of Sound Event Detection Systems",
+submitted to Detection and Classification of Acoustic Scenes and Events (DCASE) Workshop,
+2023,
+arXiv: https://arxiv.org/abs/2306.15440
+
+*Please also cite [[2]](#2) if you use PSD-ROC and/or PSDS
 ## IPython Notebooks
 Have a look at the provided example [notebooks](./notebooks) for usage example
 and for some comparisons/validations w.r.t. reference packages.
