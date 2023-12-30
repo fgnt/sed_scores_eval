@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
+from collections import defaultdict
 import lazy_dataset
 from urllib.request import urlretrieve
 from sed_scores_eval.base_modules.scores import (
@@ -63,6 +64,8 @@ def parse_ground_truth(
             ground_truth, _ = read_ground_truth_tags(ground_truth)
         else:
             ground_truth = read_ground_truth_events(ground_truth)
+    if not tagging:
+        assert_non_connected_events(ground_truth)
     if audio_ids is not None:
         if additional_ids_ok:
             ground_truth = {key: ground_truth[key] for key in audio_ids}
@@ -73,6 +76,19 @@ def parse_ground_truth(
                 f'Additional ids: {ground_truth.keys() - set(audio_ids)}.'
             )
     return ground_truth
+
+
+def assert_non_connected_events(ground_truth):
+    for clip_id, events in ground_truth.items():
+        per_class_events = defaultdict(list)
+        for event in events:
+            per_class_events[event[2]].append(event)
+        for event_class, class_events in per_class_events.items():
+            class_events = sorted(class_events)
+            current_offset = -1e6
+            for event in class_events:
+                assert event[0] > current_offset, f'Connected/overlapping {event[2]} events found for clip {clip_id}: {class_events}'
+                current_offset = event[1]
 
 
 def parse_audio_durations(audio_durations, *, audio_ids=None, additional_ids_ok=False):
@@ -252,7 +268,10 @@ def read_ground_truth_tags(filepath):
         if example_id not in tags:
             tags[example_id] = []
         if isinstance(event_labels, str):
-            event_labels = event_labels.split(',')
+            if event_labels_key == "event_labels":
+                event_labels = event_labels.split(',')
+            else:
+                event_labels = [event_labels]
             for label in event_labels:
                 tags[example_id].append(label)
                 if label not in class_counts:
