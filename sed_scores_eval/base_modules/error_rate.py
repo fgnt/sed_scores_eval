@@ -242,4 +242,8 @@ def error_rate_from_sed_eval_metrics(sed_eval_metrics):
     er['macro_average'] = sed_eval_results_macro['error_rate']['error_rate']
     ir['macro_average'] = sed_eval_results_macro['error_rate']['insertion_rate']
     dr['macro_average'] = sed_eval_results_macro['error_rate']['deletion_rate']
+    sed_eval_results_micro = sed_eval_metrics.results_overall_metrics()
+    er['micro_average'] = sed_eval_results_micro['error_rate']['error_rate']
+    ir['micro_average'] = sed_eval_results_micro['error_rate']['insertion_rate']
+    dr['micro_average'] = sed_eval_results_micro['error_rate']['deletion_rate']
     return er, ir, dr
