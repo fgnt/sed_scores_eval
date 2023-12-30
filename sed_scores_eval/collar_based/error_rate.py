@@ -67,7 +67,7 @@ def error_rate_curve(
 def error_rate(
         scores, ground_truth, threshold, *, deltas=None,
         onset_collar, offset_collar, offset_collar_rate=0.,
-        time_decimals=6, num_jobs=1,
+        return_onset_offset_dist_sum=False, time_decimals=6, num_jobs=1,
 ):
     """Compute collar-based error rates with corresponding insertion rate,
     deletion rate and intermediate statistics intermediate statistics for a
@@ -117,6 +117,7 @@ def error_rate(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
+        return_onset_offset_dist_sum=return_onset_offset_dist_sum,
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
     return single_error_rate_from_intermediate_statistics(
@@ -181,7 +182,7 @@ def best_error_rate(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = accumulated_intermediate_statistics(
+    intermediate_stats, _ = accumulated_intermediate_statistics(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
         offset_collar_rate=offset_collar_rate,
