@@ -24,25 +24,27 @@ def multi_label_to_single_label_ground_truths(ground_truth, event_classes):
         )
     single_label_ground_truths = {
         class_name: {} for class_name in event_classes}
-    for key in ground_truth.keys():
+    n_ref_count = {
+        class_name: 0 for class_name in event_classes}
+    for clip_id in ground_truth.keys():
         for class_name in event_classes:
-            single_label_ground_truths[class_name][key] = []
-        if not isinstance(ground_truth[key], (list, tuple)):
+            single_label_ground_truths[class_name][clip_id] = []
+        if not isinstance(ground_truth[clip_id], (list, tuple)):
             raise ValueError(
                 f'ground_truth values must be of type list/tuple but '
-                f'{type(ground_truth[key])} was found for key {key}.'
+                f'{type(ground_truth[clip_id])} was found for key {clip_id}.'
             )
-        for i in range(len(ground_truth[key])):
+        for i in range(len(ground_truth[clip_id])):
             if (
-                not isinstance(ground_truth[key][i], (list, tuple))
-                or len(ground_truth[key][i]) != 3
+                not isinstance(ground_truth[clip_id][i], (list, tuple))
+                or len(ground_truth[clip_id][i]) != 3
             ):
                 raise ValueError(
                     f'ground_truth event tuples must have the form '
                     f'(onset_time, offset_time, event label) but '
-                    f'{ground_truth[key][i]} was given for key {key}.'
+                    f'{ground_truth[clip_id][i]} was given for key {clip_id}.'
                 )
-            t_on, t_off, event_label = ground_truth[key][i]
+            t_on, t_off, event_label = ground_truth[clip_id][i]
             if (
                 not isinstance(t_on, Number) or not isinstance(t_off, Number)
                 or not isinstance(event_label, (str, int))
@@ -53,14 +55,19 @@ def multi_label_to_single_label_ground_truths(ground_truth, event_classes):
                     f'and offset time being numbers and event label either '
                     f'being integer or string but types {type(t_on)}, '
                     f'{type(t_off)} and {type(event_label)} were given for '
-                    f'key {key}.'
+                    f'key {clip_id}.'
                 )
             if event_label not in event_classes:
                 raise ValueError(
-                    f'event label {event_label} for key {key} is not listed '
+                    f'event label {event_label} for key {clip_id} is not listed '
                     f'in event_classes {event_classes}.'
                 )
-            single_label_ground_truths[event_label][key].append((t_on, t_off))
+            single_label_ground_truths[event_label][clip_id].append((t_on, t_off))
+            n_ref_count[event_label] += 1
+    classes_without_ground_truth_events = [
+        class_name for class_name, n_ref in n_ref_count.items() if n_ref == 0
+    ]
+    assert len(classes_without_ground_truth_events) == 0, f"No ground truth events for classes {classes_without_ground_truth_events}."
     return single_label_ground_truths
 
 
