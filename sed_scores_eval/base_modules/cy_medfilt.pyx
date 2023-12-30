@@ -244,4 +244,6 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
             current_timestamp = t
         current_score_vec[change_point_class_labels_sorted[i]] = change_point_class_scores_sorted[i]
 
+    if len(scores_filtered) == 0:
+        return np.full(scores_in.shape[1], -np.inf)[None], timestamps_in[[0,-1]]
     return np.array(scores_filtered)[1:], np.round(np.array(timestamps_filtered)+eps, time_decimals)
