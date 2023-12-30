@@ -252,19 +252,18 @@ def statistics_fn(
             hit_mat[idx][det_idx, gt_idx] = 1
     tps = hit_mat.sum((1, 2))
     fps = num_detections - tps
-    if not return_onset_offset_dist_sum:
-        return {
-            'tps': tps,
-            'fps': fps,
-        }
-    onset_dist = (hit_mat * onset_dist).sum((1, 2))
-    offset_dist = (hit_mat * offset_dist).sum((1, 2))
-    return {
+    stats = {
         'tps': tps,
         'fps': fps,
-        'onset_dist_sum': onset_dist,
-        'offset_dist_sum': offset_dist,
     }
+    if return_onset_offset_dist_sum:
+        onset_dist = (hit_mat * onset_dist).sum((1, 2))
+        offset_dist = (hit_mat * offset_dist).sum((1, 2))
+        stats.update({
+            'onset_dist_sum': onset_dist,
+            'offset_dist_sum': offset_dist,
+        })
+    return stats
 
 
 def acceleration_fn(
@@ -284,5 +283,10 @@ def acceleration_fn(
             'fps': onset_deltas_[change_points],
             'tps': np.zeros_like(cp_scores),
         }
+        if return_onset_offset_dist_sum:
+            deltas.update({
+                'onset_dist_sum': np.zeros_like(cp_scores),
+                'offset_dist_sum': np.zeros_like(cp_scores),
+            })
         return None, cp_scores, deltas
     return None, None, None
