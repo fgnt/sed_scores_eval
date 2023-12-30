@@ -60,7 +60,7 @@ def error_rate_curve(
 
 
 def error_rate(
-        scores, ground_truth, threshold, audio_durations, *, deltas=None,
+        scores, ground_truth, audio_durations, threshold, *, deltas=None,
         segment_length=1., time_decimals=6, num_jobs=1,
 ):
     """Compute collar-based error rates with corresponding insertion rate,
