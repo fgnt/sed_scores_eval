@@ -287,7 +287,7 @@ def _deltas_from_intermediate_statistics(scores, intermediate_stats):
 
     """
     scores_unique, unique_idx = np.unique(scores, return_index=True)
-    intermediate_stats = flatten(intermediate_stats)
+    intermediate_stats = flatten(intermediate_stats, sep='\\')
     stat_keys = list(intermediate_stats.keys())
     stats = np.stack([
         intermediate_stats[key][unique_idx]
@@ -332,5 +332,5 @@ def _intermediate_statistics_from_deltas(change_point_scores, deltas):
     ))
     stats = deflatten({
         key: stats_i for key, stats_i in zip(stat_keys, stats.T)
-    })
+    }, sep='\\')
     return scores_unique, stats
