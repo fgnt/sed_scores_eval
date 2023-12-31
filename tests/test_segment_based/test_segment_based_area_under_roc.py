@@ -9,10 +9,8 @@ def test_segment_based_area_under_roc_vs_sklearn():
     y_true = np.array([0, 0, 1, 1])
     y_scores = np.array([0.1, 0.4, 0.35, 0.8])
     timestamps = np.arange(len(y_scores)+1) * segment_length
+    gt = {'1': [(timestamps[2], timestamps[4], 'a')]}
     auroc_sklearn = roc_auc_score(y_true, y_scores)
-    gt = {
-        '1': [(timestamps[idx], timestamps[idx+1], 'a') for idx, t in enumerate(y_true) if t]
-    }
     scores = {
         '1': create_score_dataframe(
             y_scores[..., None], timestamps=timestamps, event_classes=['a']
