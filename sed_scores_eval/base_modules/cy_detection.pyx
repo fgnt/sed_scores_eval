@@ -4,6 +4,7 @@
 import numpy as np
 cimport numpy as np
 cimport cython
+from numpy.math cimport INFINITY
 
 
 def onset_offset_curves(scores_in, timestamps_in, change_point_candidates_in=None):
@@ -87,12 +88,12 @@ def onset_offset_curves(scores_in, timestamps_in, change_point_candidates_in=Non
         is_on = False
         for t in range(num_segments):
             if is_on:
-                if scores[t] < threshold:
+                if scores[t] < threshold or scores[t] == -INFINITY:
                     offset_times[i, event_idx] = timestamps[t]
                     event_idx += 1
                     is_on = False
             else:
-                if scores[t] >= threshold:
+                if scores[t] >= threshold and scores[t] > -INFINITY:
                     onset_times[i, event_idx] = timestamps[t]
                     is_on = True
         if is_on:
@@ -100,28 +101,3 @@ def onset_offset_curves(scores_in, timestamps_in, change_point_candidates_in=Non
             event_idx += 1
         max_events = max(max_events, event_idx)
     return np.array(change_point_candidates), np.array(onset_times[:, :max_events]), np.array(offset_times[:, :max_events])
-
-
-def onset_deltas(scores):
-    """return the change in the total number of onsets when decision threshold
-    falls below each of the scores, i.e., +1 at local maximums and -1 at local
-    minimums in score signal.
-
-    Args:
-        scores (1d np.ndarray): SED scores for a single event class
-
-    Returns:
-        onset_deltas (1d np.ndarray): array with same length as scores
-        indicating the change in the number of onsets when decision threshold
-        falls below each of the scores, i.e., +1 at local maxima and -1 at
-        local minima in score signal.
-
-    >>> onset_deltas(np.array([1,2,3,3,4,3]))
-    """
-    assert isinstance(scores, np.ndarray), scores
-    prev_scores = np.concatenate(([-np.inf], scores[:-1]))
-    next_scores = np.concatenate((scores[1:], [-np.inf]))
-    return (
-        (scores > prev_scores).astype(int)
-        - (next_scores > scores).astype(int)
-    )

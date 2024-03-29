@@ -112,7 +112,7 @@ def onset_deltas(scores):
     return (
         (scores > prev_scores).astype(int)
         - (next_scores > scores).astype(int)
-    )
+    ) * (scores > -np.inf)
 
 
 def scores_to_event_list(scores, thresholds, event_classes=None):
