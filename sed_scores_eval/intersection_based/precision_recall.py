@@ -53,7 +53,7 @@ def precision_recall_curve(
              'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = accumulated_intermediate_statistics(
+    intermediate_stats, _ = accumulated_intermediate_statistics(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -108,7 +108,7 @@ def fscore_curve(
             'n_ref': integer number of ground truth events
 
     """
-    intermediate_stats = accumulated_intermediate_statistics(
+    intermediate_stats, _ = accumulated_intermediate_statistics(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -161,7 +161,7 @@ def fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = accumulated_intermediate_statistics(
+    intermediate_stats, _ = accumulated_intermediate_statistics(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -223,7 +223,7 @@ def best_fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    intermediate_stats = accumulated_intermediate_statistics(
+    intermediate_stats, _ = accumulated_intermediate_statistics(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         time_decimals=time_decimals, num_jobs=num_jobs,
