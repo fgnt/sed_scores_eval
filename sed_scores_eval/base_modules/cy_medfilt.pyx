@@ -45,19 +45,27 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
 
     assert filter_length_in_sec is not None, "You must provide filter_length_in_sec"
 
-    if filter_length_in_sec == 0.:
-        return scores_in, timestamps_in
+    if np.isscalar(filter_length_in_sec):
+        if filter_length_in_sec == 0.:
+            return scores_in, timestamps_in
+        filter_length_in_sec = np.array(scores_in.shape[1] * [filter_length_in_sec], dtype=np.float64)
+
 
     scores_in = np.asanyarray(scores_in, dtype=np.float64)
     timestamps_in = np.asanyarray(timestamps_in, dtype=np.float64)
+    filter_length_in_sec = np.asanyarray(filter_length_in_sec, dtype=np.float64)
+    cdef double [:,:] overlap_breakpoint_timestamps = np.array([
+        np.sort(
+            np.round(np.concatenate((
+                timestamps_in - fil_len / 2,
+                timestamps_in + fil_len / 2,
+            )), decimals=time_decimals + 2)
+        )
+        for fil_len in filter_length_in_sec
+    ])
     # get breakpoints where the filter moves into or out of a segment
-    cdef double [:] overlap_breakpoint_timestamps = np.unique(
-        np.round(np.concatenate((
-            timestamps_in - filter_length_in_sec/2,
-            timestamps_in + filter_length_in_sec/2,
-        )), decimals=time_decimals+2)
-    )
-    cdef double filter_length = filter_length_in_sec
+
+    cdef double [:] filter_length = filter_length_in_sec
 
     # Idea of median filter computation:
     # For a given time step, we compute the median as the center of a stacked
@@ -75,6 +83,7 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
 
     cdef int num_segments = scores_in.shape[0] + 2
     cdef int num_classes = scores_in.shape[1]
+    cdef int num_breakpoints = overlap_breakpoint_timestamps.shape[1]
     cdef double [:,:] scores = np.concatenate((
         np.full_like(scores_in[:1], -np.inf),
         scores_in,
@@ -85,7 +94,7 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
 
     cdef:
         int i, k, j, ranking_idx
-        double t, t_diff, t_cp, current_cumsum, prev_cumsum
+        double t, t_diff, t_cp, current_cumsum, prev_cumsum, filter_length_k
 
     # for each class we track the current median score, the median bar lower
     # edge, which is the lower edge of the current median bar within the stacked
@@ -102,30 +111,41 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
     cdef int [:] ranking_indices = np.zeros(num_segments, dtype=np.int32)
     cdef double current_median_score = -np.inf
     cdef double current_median_score_range_low = 0
-    cdef double current_median_score_range_up = filter_length
+    cdef double current_median_score_range_up
     cdef double [:] scores_k
+    cdef double [:] overlap_breakpoint_timestamps_k
     cdef double [:] relevant_scores = np.zeros(num_segments)
     cdef double [:] relevant_overlaps = np.zeros(num_segments)
 
     for k in range(num_classes):
+        filter_length_k = filter_length[k]
+        scores_k = scores[:, k]
+        if filter_length_k == 0.:
+            for i in range(1, num_segments):
+                change_point_timestamps.push_back(timestamps[i])
+                change_point_class_labels.push_back(k)
+                change_point_class_scores.push_back(scores_k[i])
+            continue
         current_median_score = -np.inf
         current_median_score_range_low = 0
-        current_median_score_range_up = filter_length
-        scores_k = scores[:, k]
+        current_median_score_range_up = filter_length_k
+        overlap_breakpoint_timestamps_k = overlap_breakpoint_timestamps[k]
         relevant_segments_onset = 0
         relevant_segments_offset = 1
         num_relevant_segments = 1
         relevant_scores[0] = -np.inf
-        relevant_overlaps[0] = filter_length
-        for i in range(1, len(overlap_breakpoint_timestamps)):
-            t = overlap_breakpoint_timestamps[i]  # current breakpoint
+        relevant_overlaps[0] = filter_length_k
+        for i in range(1, num_breakpoints):
+            t = overlap_breakpoint_timestamps_k[i]  # current breakpoint
             # get time difference to previous breakpoint, i.e., the time the filter
             # moved since last breakpoint
-            t_diff = t - overlap_breakpoint_timestamps[i-1]
+            t_diff = t - overlap_breakpoint_timestamps_k[i-1]
+            if t_diff < eps:
+                continue
             # get relevant segments range, i.e., segments the filter overlapped with
             # while moving from previous to current breakpoint and compute overlap
             # at current breakpoint
-            if timestamps[relevant_segments_onset+1] < (t-filter_length/2 - eps):
+            if timestamps[relevant_segments_onset+1] < (t-filter_length_k/2 - eps):
                 ranking_idx = searchsorted(
                     relevant_scores[:num_relevant_segments],
                     scores_k[relevant_segments_onset],
@@ -146,7 +166,7 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
             assert relevant_scores[ranking_idx] == scores_k[relevant_segments_onset]
             relevant_overlaps[ranking_idx] -= t_diff
             ranking_indices[relevant_segments_onset] = ranking_idx
-            if timestamps[relevant_segments_offset] < (t + filter_length/2 - eps):
+            if timestamps[relevant_segments_offset] < (t + filter_length_k/2 - eps):
                 relevant_segments_offset += 1
                 ranking_idx = searchsorted(
                     relevant_scores[:num_relevant_segments],
@@ -182,47 +202,47 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
                 current_median_score_range_up += t_diff
             elif scores_k[relevant_segments_offset-1] == current_median_score:
                 current_median_score_range_up += t_diff
-            # if center of stacked bar (filter_length / 2) is not within current
+            # if center of stacked bar (filter_length_k / 2) is not within current
             # median bar range anymore, the median has changed while filter was
             # moving to the current breakpoint and we need to compute the exact
             # time point where the median value changed.
-            if current_median_score_range_up < (filter_length/2 - eps):
+            if current_median_score_range_up < (filter_length_k/2 - eps):
                 # change point
                 current_cumsum = 0
                 j = 0
-                while current_cumsum < (filter_length/2 - eps):
+                while current_cumsum < (filter_length_k/2 - eps):
                     prev_cumsum = current_cumsum
                     current_cumsum = current_cumsum + relevant_overlaps[j]
                     if current_cumsum > (current_median_score_range_up + eps):
-                        t_cp = t - (filter_length/2 - prev_cumsum)
+                        t_cp = t - (filter_length_k/2 - prev_cumsum)
                         assert (relevant_scores[j] >= current_median_score), (relevant_scores[j], current_median_score, i, k, t)
                         if relevant_scores[j] > current_median_score:
                             change_point_timestamps.push_back(t_cp)
                             change_point_class_labels.push_back(k)
                             change_point_class_scores.push_back(relevant_scores[j])
-                        if current_cumsum >= (filter_length/2 - eps):
+                        if current_cumsum >= (filter_length_k/2 - eps):
                             current_median_score = relevant_scores[j]
                             current_median_score_range_up = current_cumsum
                             current_median_score_range_low = prev_cumsum
                     j += 1
-            if current_median_score_range_low >= (filter_length/2 - eps):
+            if current_median_score_range_low >= (filter_length_k/2 - eps):
                 # change point
                 current_cumsum = 0
                 j = num_relevant_segments-1
-                while current_cumsum <= (filter_length/2 - eps):
+                while current_cumsum <= (filter_length_k/2 - eps):
                     prev_cumsum = current_cumsum
                     current_cumsum = current_cumsum + relevant_overlaps[j]
-                    if current_cumsum > (filter_length - current_median_score_range_up + eps):
-                        t_cp = t - (filter_length/2 - prev_cumsum)
+                    if current_cumsum > (filter_length_k - current_median_score_range_up + eps):
+                        t_cp = t - (filter_length_k/2 - prev_cumsum)
                         # assert (relevant_scores[j] <= current_median_scores), (relevant_scores[j], current_median_scores, i, k)
                         if relevant_scores[j] < current_median_score:
                             change_point_timestamps.push_back(t_cp)
                             change_point_class_labels.push_back(k)
                             change_point_class_scores.push_back(relevant_scores[j])
-                        if current_cumsum >= (filter_length/2 - eps):
+                        if current_cumsum >= (filter_length_k/2 - eps):
                             current_median_score = relevant_scores[j]
-                            current_median_score_range_up = filter_length - prev_cumsum
-                            current_median_score_range_low = filter_length - current_cumsum
+                            current_median_score_range_up = filter_length_k - prev_cumsum
+                            current_median_score_range_low = filter_length_k - current_cumsum
                     j -= 1
 
     # wrap things up
