@@ -130,12 +130,16 @@ def best_error_rate_from_intermediate_statistics(
     threshold = (
         (scores[best_idx] + scores[best_idx-1])/2 if best_idx > 0 else -np.inf
     )
+
+    def _recursive_get_item(stats, idx):
+        if isinstance(stats, dict):
+            return {key: _recursive_get_item(stats[key], idx) for key in stats}
+        if np.isscalar(stats):
+            return stats
+        return stats[idx]
     return (
         er[best_idx], ir[best_idx], dr[best_idx], threshold,
-        {
-            key: stat if np.isscalar(stat) else stat[best_idx]
-            for key, stat in intermediate_stats.items()
-        }
+       _recursive_get_item(intermediate_stats, best_idx)
     )
 
 

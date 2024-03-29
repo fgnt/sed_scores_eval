@@ -58,9 +58,8 @@ def precision_recall_curve_from_intermediate_statistics(
     p = stats['tps'] / np.maximum(stats['tps']+stats['fps'], 1)
     p[(stats['tps']+stats['fps']) == 0] = 1.
     if stats['n_ref'] == 0:
-        r = np.ones_like(p)
-    else:
-        r = stats['tps'] / stats['n_ref']
+        raise ValueError('Recall not defined if the are no positive instances')
+    r = stats['tps'] / stats['n_ref']
 
     return xsort(p, r, scores, stats)
 
@@ -193,12 +192,17 @@ def best_fscore_from_intermediate_statistics(
     threshold = (
         (scores[best_idx] + scores[best_idx-1])/2 if best_idx > 0 else -np.inf
     )
+
+    def _recursive_get_item(stats, idx):
+        if isinstance(stats, dict):
+            return {key: _recursive_get_item(stats[key], idx) for key in stats}
+        if np.isscalar(stats):
+            return stats
+        return stats[idx]
+
     return (
         f[best_idx], p[best_idx], r[best_idx], threshold,
-        {
-            key: stat if np.isscalar(stat) else stat[best_idx]
-            for key, stat in intermediate_stats.items()
-        }
+        _recursive_get_item(intermediate_stats, best_idx)
     )
 
 
