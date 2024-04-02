@@ -62,5 +62,6 @@ st.setup(
         'test': ['coverage', 'jupyter', 'matplotlib'],
     },
     ext_modules=ext_modules,
+    package_data={'sed_scores_eval': ['**/*.pyx']},  # https://stackoverflow.com/a/60751886
     include_dirs=[np.get_include()],
 )
