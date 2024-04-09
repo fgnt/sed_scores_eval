@@ -3,6 +3,7 @@ import pandas as pd
 from pathlib import Path
 from sed_scores_eval.utils.array_ops import get_first_index_where
 from sed_scores_eval.base_modules.scores import validate_score_dataframe
+from sed_scores_eval.base_modules.detection import scores_to_event_list
 from sed_scores_eval.base_modules.io import (
     parse_inputs, write_detections_for_multiple_thresholds
 )
@@ -68,7 +69,7 @@ def approximate_psds(
     """
     import tempfile
     scores, _, keys = parse_inputs(scores, ground_truth)
-    ground_truth = _parse_ground_truth(ground_truth)
+    ground_truth = _parse_events(ground_truth)
     audio_format = ground_truth['filename'][0].split('.')[-1]
     validate_score_dataframe(scores[keys[0]])
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -146,7 +147,7 @@ def approximate_psds_from_detections_dir(
     assert np.all(np.abs(thresholds - np.round(thresholds, threshold_decimals)) < 1e-15), (threshold_decimals, thresholds)
     assert np.all(thresholds == np.unique(thresholds)), thresholds
     from psds_eval import PSDSEval
-    ground_truth = _parse_ground_truth(ground_truth)
+    ground_truth = _parse_events(ground_truth)
     audio_durations = _parse_audio_durations(audio_durations)
     dir_path = Path(dir_path)
     psds_eval = PSDSEval(
@@ -198,19 +199,46 @@ def approximate_psds_from_detections_dir(
     return psds_.value, single_class_psds, (etpr, efpr), single_class_psd_rocs
 
 
-def _parse_ground_truth(ground_truth):
-    if isinstance(ground_truth, pd.DataFrame):
-        return ground_truth
-    elif isinstance(ground_truth, dict):
-        ground_truth = [(f"{key}.wav", *gt) for key in sorted(ground_truth.keys()) for gt in ground_truth[key]]
-        ground_truth = pd.DataFrame(
-            ground_truth,
+def fscore(scores, ground_truth, threshold, *, dtc_threshold, gtc_threshold, beta=1.):
+
+    from psds_eval import PSDSEval
+
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    detections = _parse_events(scores_to_event_list(scores, threshold))
+    gt = _parse_events(ground_truth)
+    audio_durations = _parse_audio_durations({clip_id: scores_df['offset'].to_numpy()[-1] for clip_id, scores_df in scores.items()})
+    psds = PSDSEval(
+        ground_truth=gt,
+        metadata=audio_durations,
+        dtc_threshold=dtc_threshold,
+        gtc_threshold=gtc_threshold,
+    )
+    if detections.empty:
+        _, event_classes = validate_score_dataframe(scores[audio_ids[0]])
+        f_macro = .0
+        f = {event_class: .0 for event_class in event_classes}
+    else:
+        f_macro, f = psds.compute_macro_f_score(detections, beta=beta)
+    for event_class in f:
+        if np.isnan(f[event_class]):
+            f[event_class] = 0.0
+    f['macro_average'] = f_macro
+    return f
+
+
+def _parse_events(events):
+    if isinstance(events, pd.DataFrame):
+        return events
+    elif isinstance(events, dict):
+        events = [(f"{key}.wav", *event) for key in sorted(events.keys()) for event in events[key]]
+        events = pd.DataFrame(
+            events,
             columns=['filename', 'onset', 'offset', 'event_label']
         )
     else:
-        assert isinstance(ground_truth, (str, Path)), type(ground_truth)
-        ground_truth = pd.read_csv(ground_truth, sep="\t")
-    return ground_truth
+        assert isinstance(events, (str, Path)), type(events)
+        events = pd.read_csv(events, sep="\t")
+    return events
 
 
 def _parse_audio_durations(audio_durations):

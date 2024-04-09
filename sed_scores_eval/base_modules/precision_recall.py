@@ -193,13 +193,6 @@ def best_fscore_from_intermediate_statistics(
         (scores[best_idx] + scores[best_idx-1])/2 if best_idx > 0 else -np.inf
     )
 
-    def _recursive_get_item(stats, idx):
-        if isinstance(stats, dict):
-            return {key: _recursive_get_item(stats[key], idx) for key in stats}
-        if np.isscalar(stats):
-            return stats
-        return stats[idx]
-
     return (
         f[best_idx], p[best_idx], r[best_idx], threshold,
         _recursive_get_item(intermediate_stats, best_idx)
@@ -282,10 +275,7 @@ def _single_fscore_from_precision_recall_curve(
     if intermediate_statistics is None:
         return f, p, r
     else:
-        return f, p, r, {
-            key: stat if np.isscalar(stat) else stat[idx]
-            for key, stat in intermediate_statistics.items()
-        }
+        return f, p, r, _recursive_get_item(intermediate_statistics, idx)
 
 
 def micro_average(intermediate_stats, beta=1.):
@@ -408,3 +398,11 @@ def average_precision_from_precision_recall_curve(p, r):
     r = r[unique_recall_indices]
     p = p[unique_recall_indices]
     return np.sum(p[1:] * (r[1:]-r[:-1]))
+
+
+def _recursive_get_item(stats, idx):
+    if isinstance(stats, dict):
+        return {key: _recursive_get_item(stats[key], idx) for key in stats}
+    if np.isscalar(stats):
+        return stats
+    return stats[idx]
