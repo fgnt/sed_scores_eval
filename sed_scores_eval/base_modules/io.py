@@ -211,7 +211,10 @@ def read_ground_truth_events(filepath):
 
     """
     ground_truth = {}
-    file = pd.read_csv(filepath, sep='\t')
+    if isinstance(filepath, pd.DataFrame):
+        file = filepath
+    else:
+        file = pd.read_csv(filepath, sep='\t')
     if not all([
         name in list(file.columns)
         for name in ['filename', 'onset', 'offset', 'event_label']
