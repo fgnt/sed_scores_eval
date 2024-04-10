@@ -60,7 +60,7 @@ def roc_curve_from_intermediate_statistics(scores_intermediate_statistics):
     return xsort(tpr, fpr, scores, stats)
 
 
-def auroc_from_intermediate_statistics(scores_intermediate_statistics):
+def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=None):
     """compute area under ROC curve
 
     Args:
@@ -72,6 +72,7 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics):
              'n_ref' (int): number of ground truth events
             If dict input is provided keys are expected to be class names with
             corresponding scores/intermediate_statistics as values.
+        max_fpr (float): maximum false positive rate up to which to compute partial auc
 
     Returns:
         auroc ((dict of) float): mean and class-wise area under ROC curve
@@ -91,5 +92,5 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics):
         scores_intermediate_statistics
     )
     tpr, fpr, *_ = roc_curve
-    auroc = staircase_auc(tpr, fpr, max_x=1.)
+    auroc = staircase_auc(tpr, fpr, max_x=max_fpr)
     return auroc, roc_curve

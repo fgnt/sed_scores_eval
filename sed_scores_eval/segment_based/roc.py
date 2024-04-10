@@ -58,7 +58,7 @@ def roc_curve(
 
 def auroc(
         scores, ground_truth, audio_durations, *, deltas=None,
-        segment_length, time_decimals=6, num_jobs=1,
+        segment_length, max_fpr=None, time_decimals=6, num_jobs=1,
 ):
     """compute area under ROC curve
 
@@ -78,6 +78,7 @@ def auroc(
             to save computing time.
         segment_length: the segment length of the segments that are to be
             evaluated.
+        max_fpr (float): maximum false positive rate up to which to compute partial auc
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high detected or ground truth events that have
             onsets or offsets right on a segment boundary may swap over to the
@@ -98,4 +99,4 @@ def auroc(
         segment_length=segment_length, time_decimals=time_decimals,
         num_jobs=num_jobs,
     )
-    return auroc_from_intermediate_statistics(intermediate_stats)
+    return auroc_from_intermediate_statistics(intermediate_stats, max_fpr=max_fpr)

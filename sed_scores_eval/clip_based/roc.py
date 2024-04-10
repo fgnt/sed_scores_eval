@@ -43,7 +43,7 @@ def roc_curve(scores, ground_truth, *, deltas=None, num_jobs=1):
     return roc_curve_from_intermediate_statistics(intermediate_stats)
 
 
-def auroc(scores, ground_truth, *, deltas=None, num_jobs=1):
+def auroc(scores, ground_truth, *, deltas=None, max_fpr=None, num_jobs=1):
     """compute area under ROC curve
 
     Args:
@@ -59,6 +59,7 @@ def auroc(scores, ground_truth, *, deltas=None, num_jobs=1):
             deltas are computed within this function. Providing deltas is useful
             if deltas are used repeatedly as, e.g., with bootstrapped evaluation,
             to save computing time.
+        max_fpr (float): maximum false positive rate up to which to compute partial auc
         num_jobs (int): the number of processes to use. Default is 1 in which
             case no multiprocessing is used.
 
@@ -72,4 +73,4 @@ def auroc(scores, ground_truth, *, deltas=None, num_jobs=1):
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         num_jobs=num_jobs,
     )
-    return auroc_from_intermediate_statistics(intermediate_stats)
+    return auroc_from_intermediate_statistics(intermediate_stats, max_fpr=max_fpr)
