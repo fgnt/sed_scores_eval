@@ -84,7 +84,7 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=N
         auroc, roc_curves = {}, {}
         for class_name, scores_stats in scores_intermediate_statistics.items():
             auroc[class_name], roc_curves[class_name] = auroc_from_intermediate_statistics(
-                scores_stats,
+                scores_stats, max_fpr=max_fpr,
             )
         auroc['mean'] = np.mean([auroc[class_name] for class_name in auroc])
         return auroc, roc_curves
@@ -92,5 +92,6 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=N
         scores_intermediate_statistics
     )
     tpr, fpr, *_ = roc_curve
-    auroc = staircase_auc(tpr, fpr, max_x=max_fpr)
+    norm = 1 if max_fpr is None else max_fpr
+    auroc = staircase_auc(tpr, fpr, max_x=max_fpr)/norm
     return auroc, roc_curve
