@@ -26,7 +26,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 st.setup(
     name='sed_scores_eval',
-    version='0.0.3',
+    version='0.0.4',
     description='(Threshold-Independent) Evaluation of Sound Event Detection Scores',
     long_description=long_description,
     long_description_content_type='text/markdown',
