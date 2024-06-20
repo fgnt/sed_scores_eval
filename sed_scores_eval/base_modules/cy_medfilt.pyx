@@ -50,9 +50,9 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
             return scores_in, timestamps_in
         filter_length_in_sec = np.array(scores_in.shape[1] * [filter_length_in_sec], dtype=np.float64)
 
-
     scores_in = np.asanyarray(scores_in, dtype=np.float64)
     timestamps_in = np.asanyarray(timestamps_in, dtype=np.float64)
+    assert (timestamps_in[1:] > timestamps_in[:-1]).all(), np.min(timestamps_in[1:] - timestamps_in[:-1])
     filter_length_in_sec = np.asanyarray(filter_length_in_sec, dtype=np.float64)
     cdef double [:,:] overlap_breakpoint_timestamps = np.array([
         np.sort(

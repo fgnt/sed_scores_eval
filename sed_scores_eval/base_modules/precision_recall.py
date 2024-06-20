@@ -127,9 +127,79 @@ def fscore_curve_from_intermediate_statistics(
     return f_beta, p, r, scores, intermediate_stats
 
 
+def best_fscore_from_curve(
+        fscore_curve, beta=1., min_precision=0., min_recall=0.,
+):
+    """Get the best possible (macro-average) f-score with corresponding
+    precision, recall, intermediate statistics and decision threshold
+
+    Args:
+        fscore_curve ((dict of) tuple): tuple of scores array
+            and dict of intermediate_statistics with the following key value
+            pairs:
+             'f' (1d np.ndarray): fscores
+             'p' (1d np.ndarray): precisions
+             'r' (1d np.ndarray): recalls
+             'cp_scores' (1d np.ndarray): change point scores
+             'stats' (dict of 1d np.ndarray): intermediate statistics
+            If dict input is provided keys are expected to be class names with
+            corresponding fscore curves as values.
+        beta: \beta parameter of f-score computation
+        min_precision: the minimum precision that must be achieved.
+        min_recall: the minimum recall that must be achieved. If the
+            constraint(s) cannot be achieved at any threshold, however,
+            fscore, precision, recall and threshold of 0,1,0,inf are returned.
+
+    Returns:
+        f_beta ((dict of) float): best achievable f-score value
+        precision ((dict of) float): precision value at best fscore
+        recall ((dict of) float): recall value at best fscore
+        threshold ((dict of) float): threshold to obtain best fscore which is
+            centered between the score that the threshold has to fall below
+            and the next smaller score which results in different intermediate
+            statistics.
+        intermediate_statistics ((dict of) dict): dict of
+            intermediate_statistics with the following key value pairs:
+            'tps' (int): true positive count at best fscore
+            'fps' (int): false positive count at best fscore
+            'n_ref' (int): number of ground truth events
+
+    """
+    if isinstance(fscore_curve, dict):
+        f, p, r, thresholds, intermediate_stats = {}, {}, {}, {}, {}
+        for class_name, curve in fscore_curve.items():
+            (
+                f[class_name], p[class_name], r[class_name],
+                thresholds[class_name], intermediate_stats[class_name]
+            ) = best_fscore_from_curve(
+                curve, beta=beta,
+                min_precision=min_precision, min_recall=min_recall,
+            )
+        f['macro_average'] = np.mean([f[class_name] for class_name in f])
+        p['macro_average'] = np.mean([p[class_name] for class_name in p])
+        r['macro_average'] = np.mean([r[class_name] for class_name in r])
+        (
+            f['micro_average'], p['micro_average'], r['micro_average']
+        ) = micro_average(intermediate_stats, beta=beta)
+        return f, p, r, thresholds, intermediate_stats
+    f, p, r, cp_scores, intermediate_stats = fscore_curve
+
+    f[p < min_precision] = 0.
+    f[r < min_recall] = 0.
+    best_idx = len(f) - 1 - np.argmax(f[::-1], axis=0)
+    threshold = (
+        (cp_scores[best_idx] + cp_scores[best_idx-1])/2 if best_idx > 0 else -np.inf
+    )
+
+    return (
+        f[best_idx], p[best_idx], r[best_idx], threshold,
+        _recursive_get_item(intermediate_stats, best_idx)
+    )
+
+
 def best_fscore_from_intermediate_statistics(
         scores_intermediate_statistics,
-        beta=1., min_precision=0., min_recall=0.
+        beta=1., min_precision=0., min_recall=0.,
 ):
     """Get the best possible (macro-average) f-score with corresponding
     precision, recall, intermediate statistics and decision threshold
@@ -164,38 +234,12 @@ def best_fscore_from_intermediate_statistics(
             'n_ref' (int): number of ground truth events
 
     """
-    if isinstance(scores_intermediate_statistics, dict):
-        f, p, r, thresholds, intermediate_stats = {}, {}, {}, {}, {}
-        for class_name, scores_stats in scores_intermediate_statistics.items():
-            (
-                f[class_name], p[class_name], r[class_name],
-                thresholds[class_name], intermediate_stats[class_name]
-            ) = best_fscore_from_intermediate_statistics(
-                scores_stats, beta=beta,
-                min_precision=min_precision,
-                min_recall=min_recall,
-            )
-        f['macro_average'] = np.mean([f[class_name] for class_name in f])
-        p['macro_average'] = np.mean([p[class_name] for class_name in p])
-        r['macro_average'] = np.mean([r[class_name] for class_name in r])
-        (
-            f['micro_average'], p['micro_average'], r['micro_average']
-        ) = micro_average(intermediate_stats, beta=beta)
-        return f, p, r, thresholds, intermediate_stats
-    f, p, r, scores, intermediate_stats = \
-        fscore_curve_from_intermediate_statistics(
-            scores_intermediate_statistics, beta=beta
-        )
-    f[p < min_precision] = 0.
-    f[r < min_recall] = 0.
-    best_idx = len(f) - 1 - np.argmax(f[::-1], axis=0)
-    threshold = (
-        (scores[best_idx] + scores[best_idx-1])/2 if best_idx > 0 else -np.inf
+    fscore_curve = fscore_curve_from_intermediate_statistics(
+        scores_intermediate_statistics=scores_intermediate_statistics,
+        beta=beta,
     )
-
-    return (
-        f[best_idx], p[best_idx], r[best_idx], threshold,
-        _recursive_get_item(intermediate_stats, best_idx)
+    return best_fscore_from_curve(
+        fscore_curve, beta=beta, min_precision=min_precision, min_recall=min_recall,
     )
 
 
