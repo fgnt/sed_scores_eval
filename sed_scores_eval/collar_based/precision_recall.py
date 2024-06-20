@@ -1,10 +1,11 @@
-from sed_scores_eval.base_modules.bootstrap import bootstrap_from_deltas
-from sed_scores_eval.utils import parallel
+import numpy as np
+from sed_scores_eval.base_modules.io import parse_inputs
+from sed_scores_eval.base_modules.bootstrap import bootstrap
 from sed_scores_eval.base_modules.precision_recall import (
     single_fscore_from_intermediate_statistics,
     best_fscore_from_intermediate_statistics,
     precision_recall_curve_from_intermediate_statistics,
-    fscore_curve_from_intermediate_statistics
+    fscore_curve_from_intermediate_statistics,
 )
 from sed_scores_eval.collar_based.intermediate_statistics import (
     accumulated_intermediate_statistics, intermediate_statistics_deltas,
@@ -188,20 +189,6 @@ def fscore(
             'n_ref' (int): number of ground truth events
 
     """
-    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
-        # batch input
-        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
-        f, p, r, stats = list(zip(*parallel.map(
-            (scores, deltas), arg_keys=('scores', 'deltas'),
-            func=fscore, max_jobs=num_jobs,
-            ground_truth=ground_truth, threshold=threshold,
-            onset_collar=onset_collar, offset_collar=offset_collar,
-            offset_collar_rate=offset_collar_rate, beta=beta,
-            return_onset_offset_dist_sum=return_onset_offset_dist_sum,
-            time_decimals=time_decimals,
-            num_jobs=num_jobs//batch_size,
-        )))
-        return f, p, r, stats
     intermediate_stats, _ = accumulated_intermediate_statistics(
         scores=scores, ground_truth=ground_truth, deltas=deltas,
         onset_collar=onset_collar, offset_collar=offset_collar,
@@ -218,7 +205,7 @@ def bootstrapped_fscore(
         scores, ground_truth, threshold, *, deltas=None,
         onset_collar, offset_collar, offset_collar_rate=0., beta=1.,
         return_onset_offset_dist_sum=False, time_decimals=6,
-        n_folds=5, n_iterations=20, num_jobs=1,
+        n_bootstrap_samples=100, num_jobs=1,
 ):
     """
 
@@ -233,44 +220,27 @@ def bootstrapped_fscore(
         beta:
         return_onset_offset_dist_sum:
         time_decimals:
-        n_folds:
-        n_iterations:
+        n_bootstrap_samples:
         num_jobs:
 
     Returns:
 
     """
-    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
-        # batch input
-        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
-        f, p, r, stats = list(zip(*parallel.map(
-            (scores, deltas), arg_keys=('scores', 'deltas'),
-            func=bootstrapped_fscore, max_jobs=num_jobs,
-            ground_truth=ground_truth, threshold=threshold,
-            onset_collar=onset_collar, offset_collar=offset_collar,
-            offset_collar_rate=offset_collar_rate, beta=beta,
-            return_onset_offset_dist_sum=return_onset_offset_dist_sum,
-            time_decimals=time_decimals,
-            n_folds=n_folds, n_iterations=n_iterations,
-            num_jobs=num_jobs//batch_size,
-        )))
-        return f, p, r, stats
-    if deltas is None:
-        deltas = intermediate_statistics_deltas(
-            scores=scores, ground_truth=ground_truth,
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    return bootstrap(
+        fscore, scores=scores, deltas=deltas,
+        deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
             onset_collar=onset_collar, offset_collar=offset_collar,
             offset_collar_rate=offset_collar_rate,
             return_onset_offset_dist_sum=return_onset_offset_dist_sum,
-            time_decimals=time_decimals, num_jobs=num_jobs,
-        )
-    return bootstrap_from_deltas(
-        fscore, deltas,
-        n_folds=n_folds, n_iterations=n_iterations, num_jobs=num_jobs,
-        threshold=threshold, scores=None, ground_truth=ground_truth,
-        onset_collar=onset_collar, offset_collar=offset_collar,
-        offset_collar_rate=offset_collar_rate, beta=beta,
-        return_onset_offset_dist_sum=return_onset_offset_dist_sum,
-        time_decimals=time_decimals,
+            time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            threshold=threshold, beta=beta,
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
     )
 
 
@@ -342,3 +312,51 @@ def best_fscore(
         intermediate_stats, beta=beta,
         min_precision=min_precision, min_recall=min_recall,
     )
+
+
+def bootstrapped_fscore_curve(
+        scores, ground_truth, *, deltas=None,
+        onset_collar, offset_collar, offset_collar_rate=0.,
+        beta=1., time_decimals=6,
+        n_bootstrap_samples=100, num_jobs=1,
+):
+    """
+
+    Args:
+        scores:
+        ground_truth:
+        deltas:
+        onset_collar:
+        offset_collar:
+        offset_collar_rate:
+        beta:
+        time_decimals:
+        n_bootstrap_samples:
+        num_jobs:
+
+    Returns:
+
+    """
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    return bootstrap(
+        fscore_curve, scores=scores, deltas=deltas,
+        deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
+            onset_collar=onset_collar, offset_collar=offset_collar,
+            offset_collar_rate=offset_collar_rate,
+            time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            beta=beta,
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
+    )
+
+
+def _recursive_get_item(stats, idx):
+    if isinstance(stats, dict):
+        return {key: _recursive_get_item(stats[key], idx) for key in stats}
+    if np.isscalar(stats):
+        return stats
+    return stats[idx]

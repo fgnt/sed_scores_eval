@@ -1,10 +1,14 @@
+from sed_scores_eval.base_modules.io import parse_inputs
+from sed_scores_eval.base_modules.bootstrap import bootstrap
 from sed_scores_eval.base_modules.precision_recall import (
     precision_recall_curve_from_intermediate_statistics,
     fscore_curve_from_intermediate_statistics,
     single_fscore_from_intermediate_statistics,
-    best_fscore_from_intermediate_statistics
+    best_fscore_from_intermediate_statistics,
 )
-from sed_scores_eval.intersection_based.intermediate_statistics import accumulated_intermediate_statistics
+from sed_scores_eval.intersection_based.intermediate_statistics import (
+    accumulated_intermediate_statistics, intermediate_statistics_deltas,
+)
 
 
 def precision_recall_curve(
@@ -168,6 +172,44 @@ def fscore(
     )
     return single_fscore_from_intermediate_statistics(
         intermediate_stats, threshold=threshold, beta=beta,
+    )
+
+
+def bootstrapped_fscore(
+        scores, ground_truth, threshold, *, deltas=None,
+        dtc_threshold, gtc_threshold, beta=1., time_decimals=6,
+        n_bootstrap_samples=100, num_jobs=1,
+):
+    """
+
+    Args:
+        scores:
+        ground_truth:
+        threshold:
+        deltas:
+        dtc_threshold:
+        gtc_threshold:
+        beta:
+        time_decimals:
+        n_bootstrap_samples:
+        num_jobs:
+
+    Returns:
+
+    """
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    return bootstrap(
+        fscore, scores=scores, deltas=deltas,
+        deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
+            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+            time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            threshold=threshold, beta=beta,
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
     )
 
 

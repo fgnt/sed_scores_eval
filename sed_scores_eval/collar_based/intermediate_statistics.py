@@ -159,8 +159,7 @@ def accumulated_intermediate_statistics(
         )
     else:
         audio_ids = list(deltas.keys())
-        ground_truth = parse_ground_truth(
-            ground_truth, audio_ids=audio_ids, additional_ids_ok=True)
+        ground_truth = parse_ground_truth(ground_truth, audio_ids=audio_ids)
     return accumulated_intermediate_statistics_from_deltas(deltas, ground_truth), audio_ids
 
 

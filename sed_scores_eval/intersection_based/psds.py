@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.interpolate import interp1d
+from sed_scores_eval.base_modules.io import parse_inputs
 from sed_scores_eval.utils.array_ops import cummax, get_first_index_where
-from sed_scores_eval.utils import parallel
 from sed_scores_eval.base_modules.curves import xsort, staircase_auc
-from sed_scores_eval.base_modules.bootstrap import bootstrap_from_deltas
+from sed_scores_eval.base_modules.bootstrap import bootstrap
 from sed_scores_eval.base_modules.io import parse_audio_durations
 from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas, accumulated_intermediate_statistics
 
@@ -82,19 +82,6 @@ def psds(
             for each event class.
 
     """
-    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
-        # batch input
-        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
-        return list(zip(*parallel.map(
-            (scores, deltas), arg_keys=('scores', 'deltas'),
-            func=psds, max_jobs=num_jobs,
-            ground_truth=ground_truth, audio_durations=audio_durations,
-            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
-            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            num_jobs=num_jobs//batch_size,
-        )))
     (effective_tp_rate, effective_fp_rate), single_class_psd_rocs = psd_roc(
         scores=scores, ground_truth=ground_truth,
         audio_durations=audio_durations, deltas=deltas,
@@ -199,8 +186,7 @@ def psd_roc(
         time_decimals=time_decimals, num_jobs=num_jobs,
     )
 
-    audio_durations = parse_audio_durations(
-        audio_durations, audio_ids=audio_ids, additional_ids_ok=(deltas is not None))
+    audio_durations = parse_audio_durations(audio_durations, audio_ids=audio_ids)
     dataset_duration = sum(audio_durations.values())
 
     single_class_psd_rocs = _single_class_roc_from_intermediate_statistics(
@@ -220,7 +206,7 @@ def bootstrapped_psds(
         scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6, n_folds=5, n_iterations=20, num_jobs=1,
+        time_decimals=6, n_bootstrap_samples=100, num_jobs=1,
 ):
     """
 
@@ -237,41 +223,26 @@ def bootstrapped_psds(
         unit_of_time:
         max_efpr:
         time_decimals:
-        n_folds:
-        n_iterations:
+        n_bootstrap_samples:
         num_jobs:
 
     Returns:
 
     """
-    if isinstance(scores, (list, tuple)) or isinstance(deltas, (list, tuple)):
-        # batch input
-        batch_size = [len(v) for v in [scores, deltas] if v is not None][0]
-        return list(zip(*parallel.map(
-            (scores, deltas), arg_keys=('scores', 'deltas'),
-            func=bootstrapped_psds, max_jobs=num_jobs,
-            ground_truth=ground_truth, audio_durations=audio_durations,
+    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    return bootstrap(
+        psds, scores=scores, deltas=deltas,
+        deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
             dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
+            cttc_threshold=cttc_threshold, time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            audio_durations=audio_durations,alpha_ct=alpha_ct,
             alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            n_folds=n_folds, n_iterations=n_iterations,
-            num_jobs=num_jobs//batch_size,
-        )))
-    if deltas is None:
-        deltas = intermediate_statistics_deltas(
-            scores=scores, ground_truth=ground_truth,
-            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold,
-            time_decimals=time_decimals, num_jobs=num_jobs,
-        )
-    return bootstrap_from_deltas(
-        psds, deltas,
-        n_folds=n_folds, n_iterations=n_iterations, num_jobs=num_jobs,
-        scores=None, ground_truth=ground_truth, audio_durations=audio_durations,
-        dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-        cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
-        unit_of_time=unit_of_time, max_efpr=max_efpr
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
     )
 
 
@@ -384,6 +355,8 @@ def multi_class_psd_roc_from_single_class_psd_rocs(single_class_psd_rocs, alpha_
 
 
 def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
+    # make cummax choose higher threshold when two ops have same fpr&tpr
+    tp_ratio, effective_fp_rate, *other = [values[::-1] for values in [tp_ratio, effective_fp_rate, *other]]
     tp_ratio, effective_fp_rate, *other = xsort(tp_ratio, effective_fp_rate, *other)
     cummax_indices = cummax(tp_ratio)[1]
     tp_ratio, effective_fp_rate, *other = [values[cummax_indices] for values in [tp_ratio, effective_fp_rate, *other]]

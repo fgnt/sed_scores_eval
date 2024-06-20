@@ -132,7 +132,7 @@ def test_bootstrapped_median_filter_independent_psds(dataset, params, num_jobs):
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100., time_decimals=6,
-        num_jobs=num_jobs, n_folds=5, n_iterations=4,
+        num_jobs=num_jobs, n_bootstrap_samples=20,
     )
     (psds_mean, psds_low, psds_high) = confidence_interval(pipsds)
     assert psds_low < psds_mean < psds_high, (psds_low, psds_mean, psds_high)
@@ -211,7 +211,7 @@ def test_bootstrapped_median_filter_independent_psds_prefiltered(dataset, params
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100., time_decimals=6,
-        num_jobs=num_jobs, n_folds=5, n_iterations=4,
+        num_jobs=num_jobs, n_bootstrap_samples=20,
     )
 
     postprocessing_functions = [
@@ -224,26 +224,6 @@ def test_bootstrapped_median_filter_independent_psds_prefiltered(dataset, params
         psds_rocs_prefiltered, single_class_psd_rocs_prefiltered,
     ) = intersection_based.bootstrapped_median_filter_independent_psds(
         scores=None,
-        scores_processed=[postprocessing_fn(scores) for postprocessing_fn in postprocessing_functions],
-        ground_truth=ground_truth,
-        audio_durations=audio_durations,
-        median_filter_lengths_in_sec=median_filter_lengths_in_sec,
-        dtc_threshold=params['dtc_threshold'],
-        gtc_threshold=params['gtc_threshold'],
-        cttc_threshold=params['cttc_threshold'],
-        alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
-        unit_of_time='hour', max_efpr=100., time_decimals=6,
-        num_jobs=num_jobs, n_folds=5, n_iterations=4,
-    )
-    assert (np.array(pipsds_prefiltered) == np.array(pipsds)).all()
-
-    (
-        pipsds_prefiltered, single_class_pipsds_prefiltered,
-        pi_psd_roc_prefiltered, single_class_pi_psd_rocs_prefiltered,
-        psds_rocs_prefiltered, single_class_psd_rocs_prefiltered,
-    ) = intersection_based.bootstrapped_median_filter_independent_psds(
-        scores=None,
-        scores_processed=None,
         deltas=[
             intersection_based.deltas_postprocessing(
                 scores,
@@ -263,6 +243,6 @@ def test_bootstrapped_median_filter_independent_psds_prefiltered(dataset, params
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100., time_decimals=6,
-        num_jobs=num_jobs, n_folds=5, n_iterations=4,
+        num_jobs=num_jobs, n_bootstrap_samples=20,
     )
     assert (np.array(pipsds_prefiltered) == np.array(pipsds)).all()

@@ -1,7 +1,8 @@
+
 import numpy as np
-from functools import partial
 from sed_scores_eval.utils import parallel
-from sed_scores_eval.base_modules.bootstrap import bootstrap_from_deltas
+from sed_scores_eval.base_modules.io import parse_inputs, parse_ground_truth, parse_audio_durations
+from sed_scores_eval.base_modules.bootstrap import bootstrap
 from sed_scores_eval.base_modules.postprocessing import medfilt
 from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas
 from sed_scores_eval.intersection_based.psds import _unique_cummax_sort, psd_roc, psds_from_psd_roc, multi_class_psd_roc_from_single_class_psd_rocs
@@ -89,9 +90,31 @@ def merge_individual_rocs_into_overall_roc(rocs):
     return _unique_cummax_sort(tprs, efprs, scores, filter_lengths)
 
 
-def postprocessing_independent_psds(
-        scores, ground_truth, audio_durations, *, postprocessing_functions,
-        scores_processed=None, deltas=None,
+def postprocessing_independent_psd_roc_from_postprocessing_dependent_psd_rocs(single_class_psd_rocs, alpha_st, max_efpr):
+
+    single_class_pi_psd_rocs = {
+        class_name: merge_individual_rocs_into_overall_roc([
+            (
+                *single_class_psd_rocs[m][class_name],
+                np.full(
+                    len(single_class_psd_rocs[m][class_name][-1]),
+                    m,
+                    dtype=int,
+                )
+            )
+            for m in range(len(single_class_psd_rocs))
+        ])
+        for class_name in single_class_psd_rocs[0]
+    }
+
+    pi_psd_roc = multi_class_psd_roc_from_single_class_psd_rocs(
+        single_class_pi_psd_rocs, alpha_st=alpha_st, max_efpr=max_efpr
+    )
+    return pi_psd_roc, single_class_pi_psd_rocs
+
+
+def postprocessing_independent_psds_from_postprocessed_scores(
+        scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6, num_jobs=1,
@@ -120,16 +143,14 @@ def postprocessing_independent_psds(
     2023
 
     Args:
-        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+        scores (list of dict, str or pathlib.Path): SED score DataFrames
             (cf. sed_scores_eval.utils.scores.create_score_dataframe)
-            or a directory path (as str or pathlib.Path) from where the SED
-            scores can be loaded.
+            or a directory paths (as str or pathlib.Path) from where the SED
+            scores can be loaded for different post-processings.
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
-        postprocessing_functions:
-        scores_processed:
         deltas (dict of dicts of tuples): Must be deltas as returned by
             `accumulated_intermediate_statistics_from_deltas`. If not provided,
             deltas are computed within this function. Providing deltas is useful
@@ -169,27 +190,13 @@ def postprocessing_independent_psds(
             for each event class.
 
     """
-    if (
-        isinstance(scores, (list, tuple))
-        or (isinstance(scores_processed, (list, tuple)) and isinstance(scores_processed[0], (list, tuple)))
-        or (isinstance(deltas, (list, tuple)) and isinstance(deltas[0], (list, tuple)))
-    ):
-        batch_size = [len(v) for v in [scores, scores_processed, deltas] if v is not None][0]
-        return list(zip(*parallel.map(
-            (scores, scores_processed, deltas), ('scores', 'scores_processed', 'deltas'),
-            func=postprocessing_independent_psds, max_jobs=num_jobs,
-            postprocessing_functions=postprocessing_functions,
-            ground_truth=ground_truth, audio_durations=audio_durations,
-            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
-            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            num_jobs=num_jobs//batch_size,
-        )))
-    (pi_effective_tp_rate, pi_effective_fp_rate), single_class_pi_psd_rocs, psd_rocs, single_class_psd_rocs = postprocessing_independent_psd_roc(
-        scores=scores, ground_truth=ground_truth, audio_durations=audio_durations,
-        postprocessing_functions=postprocessing_functions,
-        scores_processed=scores_processed, deltas=deltas,
+    (
+        (pi_effective_tp_rate, pi_effective_fp_rate),
+        single_class_pi_psd_rocs,
+        psd_rocs, single_class_psd_rocs
+    ) = postprocessing_independent_psd_roc_from_postprocessed_scores(
+        scores=scores, ground_truth=ground_truth,
+        audio_durations=audio_durations, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
         unit_of_time=unit_of_time, max_efpr=max_efpr,
@@ -211,9 +218,8 @@ def postprocessing_independent_psds(
     )
 
 
-def postprocessing_independent_psd_roc(
-        scores, ground_truth, audio_durations, *, postprocessing_functions,
-        scores_processed=None, deltas=None,
+def postprocessing_independent_psd_roc_from_postprocessed_scores(
+        scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6, num_jobs=1,
@@ -240,16 +246,14 @@ def postprocessing_independent_psd_roc(
     2023
 
     Args:
-        scores (dict, str, pathlib.Path): dict of SED score DataFrames
+        scores (list of dict, str or pathlib.Path): SED score DataFrames
             (cf. sed_scores_eval.utils.scores.create_score_dataframe)
-            or a directory path (as str or pathlib.Path) from where the SED
-            scores can be loaded.
+            or a directory paths (as str or pathlib.Path) from where the SED
+            scores can be loaded for different post-processings.
         ground_truth (dict, str or pathlib.Path): dict of lists of ground truth
             event tuples (onset, offset, event label) for each audio clip or a
             file path from where the ground truth can be loaded.
         audio_durations: The duration of each audio file in the evaluation set.
-        postprocessing_functions:
-        scores_processed:
         deltas (dict of dicts of tuples): Must be deltas as returned by
             `accumulated_intermediate_statistics_from_deltas`. If not provided,
             deltas are computed within this function. Providing deltas is useful
@@ -285,86 +289,33 @@ def postprocessing_independent_psd_roc(
         single_class_psd_rocs (dict of tuples of 1d np.ndarrays):
             tuple of MFI True Positive Rates and effective False Positive Rates
             for each event class.
-
     """
-    if (
-        isinstance(scores, (list, tuple))
-        or (isinstance(scores_processed, (list, tuple)) and isinstance(scores_processed[0], (list, tuple)))
-        or (isinstance(deltas, (list, tuple)) and isinstance(deltas[0], (list, tuple)))
-    ):
-        # batch input
-        batch_size = [len(v) for v in [scores, scores_processed, deltas] if v is not None][0]
-        return list(zip(*parallel.map(
-            (scores, scores_processed, deltas), ('scores', 'scores_processed', 'deltas'),
-            func=postprocessing_independent_psd_roc, max_jobs=num_jobs,
-            postprocessing_functions=postprocessing_functions,
-            ground_truth=ground_truth, audio_durations=audio_durations,
-            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
-            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            num_jobs=num_jobs//batch_size,
-        )))
     if deltas is not None:
         assert isinstance(deltas, (list, tuple)), type(deltas)
-        if scores_processed is None:
-            scores_processed = len(deltas) * [None]
-        if postprocessing_functions is not None:
-            assert len(deltas) == len(postprocessing_functions), (len(deltas), len(postprocessing_functions))
-    if scores_processed is not None:
-        assert isinstance(scores_processed, (list, tuple)), type(scores_processed)
-        if postprocessing_functions is not None:
-            assert len(scores_processed) == len(postprocessing_functions), (len(scores_processed), len(postprocessing_functions))
-        psd_rocs, single_class_psd_rocs = list(zip(*parallel.map(
-            (scores_processed, deltas), arg_keys=('scores', 'deltas'),
-            func=psd_roc, max_jobs=num_jobs,
-            ground_truth=ground_truth, audio_durations=audio_durations,
-            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
-            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            num_jobs=num_jobs//len(scores_processed),
-        )))
-    else:
-        assert isinstance(postprocessing_functions, (list, tuple)), type(postprocessing_functions)
-        psd_rocs, single_class_psd_rocs = list(zip(*parallel.map(
-            postprocessing_functions, arg_keys='postprocessing_fn',
-            func=psd_roc_postprocessing, max_jobs=num_jobs,
-            scores=scores, ground_truth=ground_truth, audio_durations=audio_durations,
-            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
-            alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            num_jobs=1,
-        )))
-
-    single_class_pi_psd_rocs = {
-        class_name: merge_individual_rocs_into_overall_roc([
-            (
-                *single_class_psd_rocs[m][class_name],
-                np.full(
-                    len(single_class_psd_rocs[m][class_name][-1]),
-                    m,
-                    dtype=int,
-                )
-            )
-            for m in range(len(single_class_psd_rocs))
-        ])
-        for class_name in single_class_psd_rocs[0]
-    }
-
-    pi_psd_roc = multi_class_psd_roc_from_single_class_psd_rocs(
-        single_class_pi_psd_rocs, alpha_st=alpha_st, max_efpr=max_efpr
-    )
+        if scores is None:
+            scores = len(deltas) * [None]
+        else:
+            assert len(deltas) == len(scores), (len(deltas), len(scores))
+    assert isinstance(scores, (list, tuple)), type(scores)
+    psd_rocs, single_class_psd_rocs = list(zip(*parallel.map(
+        (scores, deltas), arg_keys=('scores', 'deltas'),
+        func=psd_roc, max_jobs=num_jobs,
+        ground_truth=ground_truth, audio_durations=audio_durations,
+        dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+        cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
+        alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
+        time_decimals=time_decimals,
+        num_jobs=max(num_jobs//len(scores), 1),
+    )))
+    pi_psd_roc, single_class_pi_psd_rocs = postprocessing_independent_psd_roc_from_postprocessing_dependent_psd_rocs(single_class_psd_rocs, alpha_st, max_efpr)
     return pi_psd_roc, single_class_pi_psd_rocs, psd_rocs, single_class_psd_rocs
 
 
-def bootstrapped_postprocessing_independent_psds(
-        scores, ground_truth, audio_durations, *, postprocessing_functions,
-        scores_processed=None, deltas=None,
+def bootstrapped_postprocessing_independent_psds_from_postprocessed_scores(
+        scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6, n_folds=5, n_iterations=4, num_jobs=1,
+        time_decimals=6, n_bootstrap_samples=100, num_jobs=1,
 ):
     """
 
@@ -372,8 +323,6 @@ def bootstrapped_postprocessing_independent_psds(
         scores:
         ground_truth:
         audio_durations:
-        postprocessing_functions:
-        scores_processed:
         deltas:
         dtc_threshold:
         gtc_threshold:
@@ -383,81 +332,55 @@ def bootstrapped_postprocessing_independent_psds(
         unit_of_time:
         max_efpr:
         time_decimals:
-        n_folds:
-        n_iterations:
+        n_bootstrap_samples:
         num_jobs:
 
     Returns:
 
     """
-    if (
-        isinstance(scores, (list, tuple))
-        or (isinstance(scores_processed, (list, tuple)) and isinstance(scores_processed[0], (list, tuple)))
-        or (isinstance(deltas, (list, tuple)) and isinstance(deltas[0], (list, tuple)))
-    ):
-        # batch input
-        batch_size = [len(v) for v in [scores, scores_processed, deltas] if v is not None][0]
-        return list(zip(*parallel.map(
-            (scores, scores_processed, deltas),
-            arg_keys=('scores', 'scores_processed', 'deltas'),
-            func=bootstrapped_postprocessing_independent_psds,
-            postprocessing_functions=postprocessing_functions,
-            max_jobs=num_jobs, ground_truth=ground_truth,
-            audio_durations=audio_durations,
+    def deltas_fn(scores, num_jobs, **kwargs):
+        return list(parallel.map(
+            scores, arg_keys='scores',
+            func=intermediate_statistics_deltas, max_jobs=num_jobs,
+            **kwargs, num_jobs=1,
+        ))
+    ground_truth = parse_ground_truth(ground_truth)
+    audio_durations = parse_audio_durations(audio_durations)
+    return bootstrap(
+        postprocessing_independent_psds_from_postprocessed_scores,
+        scores=scores, deltas=deltas, deltas_fn=deltas_fn, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
             dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-            cttc_threshold=cttc_threshold, alpha_ct=alpha_ct,
+            cttc_threshold=cttc_threshold, time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            audio_durations=audio_durations,alpha_ct=alpha_ct,
             alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
-            time_decimals=time_decimals,
-            n_folds=n_folds, n_iterations=n_iterations,
-            num_jobs=num_jobs//batch_size,
-        )))
-    if deltas is None:
-        assert isinstance(postprocessing_functions, (list, tuple)), type(postprocessing_functions)
-        if scores_processed is None:
-            deltas = list(parallel.map(
-                postprocessing_functions, arg_keys='postprocessing_fn',
-                func=deltas_postprocessing, max_jobs=num_jobs,
-                scores=scores, ground_truth=ground_truth,
-                dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-                cttc_threshold=cttc_threshold, time_decimals=time_decimals,
-                num_jobs=1,
-            ))
-        else:
-            deltas = list(parallel.map(
-                scores_processed, arg_keys='scores',
-                func=intermediate_statistics_deltas, max_jobs=num_jobs,
-                ground_truth=ground_truth,
-                dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-                cttc_threshold=cttc_threshold, time_decimals=time_decimals,
-                num_jobs=1,
-            ))
-    return bootstrap_from_deltas(
-        postprocessing_independent_psds, deltas,
-        n_folds=n_folds, n_iterations=n_iterations, num_jobs=num_jobs,
-        scores=None, ground_truth=ground_truth, audio_durations=audio_durations,
-        postprocessing_functions=postprocessing_functions,
-        dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
-        cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
-        unit_of_time=unit_of_time, max_efpr=max_efpr
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
     )
 
 
 def median_filter_independent_psds(
-        scores, ground_truth, audio_durations, *, median_filter_lengths_in_sec,
-        scores_processed=None, deltas=None,
+        scores, ground_truth, audio_durations, *,
+        median_filter_lengths_in_sec, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
         time_decimals=6, num_jobs=1,
 ):
-    postprocessing_functions = [
-        partial(medfilt, filter_length_in_sec=filter_length_in_sec)
-        for filter_length_in_sec in median_filter_lengths_in_sec
-    ]
-    return postprocessing_independent_psds(
-        scores, ground_truth, audio_durations,
-        postprocessing_functions=postprocessing_functions,
-        scores_processed=scores_processed, deltas=deltas,
-        dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+    if deltas is None:
+        scores_postprocessed = parallel.map(
+            median_filter_lengths_in_sec, arg_keys='filter_length_in_sec',
+            func=medfilt, max_jobs=num_jobs,
+            scores=scores, time_decimals=time_decimals,
+        )
+    else:
+        assert len(deltas) == len(median_filter_lengths_in_sec)
+        scores_postprocessed = None
+    return postprocessing_independent_psds_from_postprocessed_scores(
+        scores_postprocessed, ground_truth, audio_durations,
+        deltas=deltas, dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
         unit_of_time=unit_of_time, max_efpr=max_efpr,
         time_decimals=time_decimals, num_jobs=num_jobs,
@@ -465,23 +388,26 @@ def median_filter_independent_psds(
 
 
 def bootstrapped_median_filter_independent_psds(
-        scores, ground_truth, audio_durations, *, median_filter_lengths_in_sec,
-        scores_processed=None, deltas=None,
+        scores, ground_truth, audio_durations, *,
+        median_filter_lengths_in_sec, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6, n_folds=5, n_iterations=4, num_jobs=1,
+        time_decimals=6, n_bootstrap_samples=100, num_jobs=1,
 ):
-    postprocessing_functions = [
-        partial(medfilt, filter_length_in_sec=filter_length_in_sec)
-        for filter_length_in_sec in median_filter_lengths_in_sec
-    ]
-    return bootstrapped_postprocessing_independent_psds(
-        scores, ground_truth, audio_durations,
-        postprocessing_functions=postprocessing_functions,
-        scores_processed=scores_processed, deltas=deltas,
+    if deltas is None:
+        scores_postprocessed = parallel.map(
+            median_filter_lengths_in_sec, arg_keys='filter_length_in_sec',
+            func=medfilt, max_jobs=num_jobs,
+            scores=scores, time_decimals=time_decimals,
+        )
+    else:
+        assert len(deltas) == len(median_filter_lengths_in_sec)
+        scores_postprocessed = None
+    return bootstrapped_postprocessing_independent_psds_from_postprocessed_scores(
+        scores_postprocessed, ground_truth, audio_durations, deltas=deltas,
         dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
         cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
         unit_of_time=unit_of_time, max_efpr=max_efpr,
         time_decimals=time_decimals, num_jobs=num_jobs,
-        n_folds=n_folds, n_iterations=n_iterations,
+        n_bootstrap_samples=n_bootstrap_samples,
     )

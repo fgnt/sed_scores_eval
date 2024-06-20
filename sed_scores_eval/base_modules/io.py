@@ -50,8 +50,7 @@ def parse_scores(scores):
 
 
 def parse_ground_truth(
-        ground_truth, *,
-        tagging=False, audio_ids=None, additional_ids_ok=False
+        ground_truth, *, tagging=False, audio_ids=None,
 ):
     if not isinstance(ground_truth, (dict, str, Path)):
         raise ValueError(
@@ -66,15 +65,12 @@ def parse_ground_truth(
             ground_truth = read_ground_truth_events(ground_truth)
     if not tagging:
         assert_non_connected_events(ground_truth)
-    if audio_ids is not None:
-        if additional_ids_ok:
-            ground_truth = {key: ground_truth[key] for key in audio_ids}
-        elif not (ground_truth.keys() == set(audio_ids)):
-            raise ValueError(
-                f'ground_truth audio ids do not match audio_ids. '
-                f'Missing ids: {set(audio_ids) - ground_truth.keys()}. '
-                f'Additional ids: {ground_truth.keys() - set(audio_ids)}.'
-            )
+    if audio_ids is not None and not (ground_truth.keys() == set(audio_ids)):
+        raise ValueError(
+            f'ground_truth audio ids do not match audio_ids. '
+            f'Missing ids: {set(audio_ids) - ground_truth.keys()}. '
+            f'Additional ids: {ground_truth.keys() - set(audio_ids)}.'
+        )
     return ground_truth
 
 
@@ -91,7 +87,7 @@ def assert_non_connected_events(ground_truth):
                 current_offset = event[1]
 
 
-def parse_audio_durations(audio_durations, *, audio_ids=None, additional_ids_ok=False):
+def parse_audio_durations(audio_durations, *, audio_ids=None):
     if not isinstance(audio_durations, (dict, str, Path)):
         raise ValueError(
             f'audio_durations must be dict, str or Path but '
@@ -101,15 +97,12 @@ def parse_audio_durations(audio_durations, *, audio_ids=None, additional_ids_ok=
         audio_durations = Path(audio_durations)
         assert audio_durations.is_file(), audio_durations
         audio_durations = read_audio_durations(audio_durations)
-    if audio_ids is not None:
-        if additional_ids_ok:
-            audio_durations = {key: audio_durations[key] for key in audio_ids}
-        elif not (audio_durations.keys() == set(audio_ids)):
-            raise ValueError(
-                f'audio_durations audio ids do not match audio_ids. '
-                f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
-                f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
-            )
+    if audio_ids is not None and not (audio_durations.keys() == set(audio_ids)):
+        raise ValueError(
+            f'audio_durations audio ids do not match audio_ids. '
+            f'Missing ids: {set(audio_ids) - audio_durations.keys()}. '
+            f'Additional ids: {audio_durations.keys() - set(audio_ids)}.'
+        )
     return audio_durations
 
 

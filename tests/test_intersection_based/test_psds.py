@@ -191,7 +191,7 @@ def test_bootstrapped_psds(dataset, params, num_jobs):
         cttc_threshold=params['cttc_threshold'],
         alpha_ct=params['alpha_ct'], alpha_st=params['alpha_st'],
         unit_of_time='hour', max_efpr=100., time_decimals=6,
-        num_jobs=num_jobs, n_folds=5, n_iterations=4,
+        num_jobs=num_jobs, n_bootstrap_samples=20,
     )
     (psds_mean, psds_low, psds_high) = confidence_interval(psds)
     assert psds_low < psds_mean < psds_high, (psds_low, psds_mean, psds_high)

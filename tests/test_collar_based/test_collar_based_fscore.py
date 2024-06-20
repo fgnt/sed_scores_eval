@@ -57,7 +57,6 @@ def test_collar_based_fscore_vs_sed_eval(dataset, threshold, collar, num_jobs):
         np.testing.assert_almost_equal(r[key], r_sed_eval[key])
 
 
-
 @pytest.mark.parametrize("dataset", ["validation", "eval"])
 @pytest.mark.parametrize(
     "threshold",
@@ -81,7 +80,6 @@ def test_collar_based_fscore_vs_sed_eval(dataset, threshold, collar, num_jobs):
 @pytest.mark.parametrize("num_jobs", [1, 2])
 def test_bootstrapped_collar_based_fscore(dataset, threshold, collar, num_jobs):
     offset_collar_rate = collar
-    time_decimals = 30
     test_data_dir = package_dir / 'tests' / 'data'
     if not test_data_dir.exists():
         io.download_test_data()
@@ -92,8 +90,7 @@ def test_bootstrapped_collar_based_fscore(dataset, threshold, collar, num_jobs):
         threshold=threshold,
         onset_collar=collar, offset_collar=collar,
         offset_collar_rate=offset_collar_rate,
-        time_decimals=time_decimals,
-        num_jobs=num_jobs, n_folds=5, n_iterations=4,
+        num_jobs=num_jobs, n_bootstrap_samples=20,
     )
     f_intervals = confidence_interval(f)
     for class_name, (f_mean, f_low, f_high) in f_intervals.items():
@@ -105,8 +102,35 @@ def test_bootstrapped_collar_based_fscore(dataset, threshold, collar, num_jobs):
         threshold=threshold,
         onset_collar=collar, offset_collar=collar,
         offset_collar_rate=offset_collar_rate,
-        time_decimals=time_decimals,
         num_jobs=num_jobs,
     )
     for class_name, (f_mean, f_low, f_high) in f_intervals.items():
         assert f_low < f[class_name] < f_high, (f_low, f_mean, f_high)
+
+
+@pytest.mark.parametrize("dataset", ["validation", "eval"])
+@pytest.mark.parametrize("collar", [.2, .5])
+@pytest.mark.parametrize("num_jobs", [1, 2])
+def test_collar_based_best_fscore(dataset, collar, num_jobs):
+    offset_collar_rate = collar
+    test_data_dir = package_dir / 'tests' / 'data'
+    if not test_data_dir.exists():
+        io.download_test_data()
+
+    best_f, _, _, best_thresholds, _ = collar_based.best_fscore(
+        scores=test_data_dir / dataset / "scores",
+        ground_truth=test_data_dir / dataset / "ground_truth.tsv",
+        onset_collar=collar, offset_collar=collar,
+        offset_collar_rate=offset_collar_rate,
+        num_jobs=num_jobs,
+    )
+    f_ref, *_ = collar_based.fscore(
+        scores=test_data_dir / dataset / "scores",
+        ground_truth=test_data_dir / dataset / "ground_truth.tsv",
+        threshold=best_thresholds,
+        onset_collar=collar, offset_collar=collar,
+        offset_collar_rate=offset_collar_rate,
+        num_jobs=num_jobs,
+    )
+    for key in f_ref.keys():
+        assert abs(best_f[key] - f_ref[key]) < 1e-6, key
