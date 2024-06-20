@@ -1,5 +1,5 @@
 import numpy as np
-from sed_scores_eval.base_modules.curves import xsort, staircase_auc
+from sed_scores_eval.base_modules.curves import xsort, linear_auc
 
 
 def roc_curve_from_intermediate_statistics(scores_intermediate_statistics):
@@ -93,5 +93,5 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=N
     )
     tpr, fpr, *_ = roc_curve
     norm = 1 if max_fpr is None else max_fpr
-    auroc = staircase_auc(tpr, fpr, max_x=max_fpr)/norm
+    auroc = linear_auc(tpr, fpr, max_x=max_fpr)/norm
     return auroc, roc_curve

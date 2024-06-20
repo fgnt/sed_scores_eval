@@ -38,9 +38,37 @@ def staircase_auc(y, x, max_x=None):
     return auc
 
 
+def linear_auc(y, x, max_x=None):
+    """Area under Curve (AUC) with linear interpolation
+
+    Args:
+        y (1d np.ndarray): y values
+        x (1d np.ndarray): x values
+        max_x: maximal x value. If not None curve is interpolated up to this x
+            value. Else AUC is computed up to the maximal value in x array.
+
+    Returns:
+        auc: AUC value
+
+    >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,2.,3.]))
+    3.0
+    >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,1.1,1.2]))
+    0.2999999999999998
+    >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,2.,3.]), max_x=2.5)
+    2.0
+    >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,2.,3.]), max_x=10.)
+    24.0
+    """
+    sort_idx = np.argsort(x)
+    x = x[sort_idx]
+    y = y[sort_idx]
+    y = (y + np.concatenate((y[1:], [y[-1]]))) / 2
+    return staircase_auc(y, x, max_x=max_x)
+
+
 def get_curve_idx_for_threshold(scores, threshold):
     """get that index of a curve that corresponds to a given threshold
-    
+
     Args:
         scores: 
         threshold: 
