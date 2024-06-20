@@ -18,7 +18,7 @@ def psds(
         scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6, num_jobs=1,
+        non_oracle=False, time_decimals=6, num_jobs=1,
 ):
     """Computes Polyphonic Sound Detection Score (PSDS) [1] using the exact
     and efficient computation approach proposed in [2].
@@ -64,6 +64,11 @@ def psds(
         max_efpr (float): the maximum eFPR for which the system is evaluated,
             i.e., until where the Area under PSD ROC Curve is computed.
             Default is 100.
+        non_oracle (bool): if True, thresholds, that lead to a lower TPR at
+            higher FPR than other thresholds, are NOT discarded from ROC/AUC
+            computation. Discrading them requires evaluation w.r.t. ground truth
+            (oracle information), which is inaccessible in practical scenarios.
+            https://arxiv.org/abs/2406.04212
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
@@ -89,6 +94,7 @@ def psds(
         cttc_threshold=cttc_threshold, alpha_ct=alpha_ct, alpha_st=alpha_st,
         unit_of_time=unit_of_time, max_efpr=max_efpr,
         time_decimals=time_decimals, num_jobs=num_jobs,
+        non_oracle=non_oracle,
     )
     psds_value = psds_from_psd_roc(
         effective_tp_rate, effective_fp_rate, max_efpr)
@@ -107,7 +113,7 @@ def psd_roc(
         scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6, num_jobs=1,
+        non_oracle=False, time_decimals=6, num_jobs=1,
 ):
     """Computes Polyphonic Sound Detection ROC (PSD ROC) [1] using the exact
     and efficient computation approach proposed in [2].
@@ -153,6 +159,11 @@ def psd_roc(
         max_efpr (float): the maximum eFPR for which the system is evaluated,
             i.e., until where the Area under PSD ROC Curve is computed.
             Default is 100.
+        non_oracle (bool): if True, thresholds, that lead to a lower TPR at
+            higher FPR than other thresholds, are NOT discarded from ROC/AUC
+            computation. Discrading them requires evaluation w.r.t. ground truth
+            (oracle information), which is inaccessible in practical scenarios.
+            https://arxiv.org/abs/2406.04212
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high, e.g., a detection with an ground truth intersection
             exactly matching the DTC, may be falsely counted as false detection
@@ -193,6 +204,7 @@ def psd_roc(
         intermediate_statistics,
         dataset_duration=dataset_duration,
         alpha_ct=alpha_ct, unit_of_time=unit_of_time, max_efpr=max_efpr,
+        non_oracle=non_oracle,
     )
     effective_tp_rate, overall_effective_fp_rates = multi_class_psd_roc_from_single_class_psd_rocs(single_class_psd_rocs, alpha_st=alpha_st, max_efpr=max_efpr)
     return (effective_tp_rate, overall_effective_fp_rates), single_class_psd_rocs
@@ -206,7 +218,8 @@ def bootstrapped_psds(
         scores, ground_truth, audio_durations, *, deltas=None,
         dtc_threshold, gtc_threshold, cttc_threshold=None,
         alpha_ct=.0, alpha_st=.0, unit_of_time='hour', max_efpr=100.,
-        time_decimals=6, n_bootstrap_samples=100, num_jobs=1,
+        non_oracle=False, time_decimals=6, n_bootstrap_samples=100, num_jobs=1,
+
 ):
     """
 
@@ -222,6 +235,7 @@ def bootstrapped_psds(
         alpha_st:
         unit_of_time:
         max_efpr:
+        non_oracle (bool):
         time_decimals:
         n_bootstrap_samples:
         num_jobs:
@@ -241,6 +255,7 @@ def bootstrapped_psds(
         eval_fn_kwargs=dict(
             audio_durations=audio_durations,alpha_ct=alpha_ct,
             alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
+            non_oracle=non_oracle,
         ),
         n_bootstrap_samples=n_bootstrap_samples,
     )
@@ -249,6 +264,7 @@ def bootstrapped_psds(
 def _single_class_roc_from_intermediate_statistics(
         scores_intermediate_statistics, dataset_duration,
         alpha_ct=.0, unit_of_time='hour', max_efpr=100.,
+        non_oracle=False,
 ):
     """
 
@@ -275,6 +291,11 @@ def _single_class_roc_from_intermediate_statistics(
             of time). Default is hour.
         max_efpr (float): the maximum eFPR for which the system is evaluated,
             i.e., until where the Area under PSD ROC Curve is computed.
+        non_oracle (bool): if True, thresholds, that lead to a lower TPR at
+            higher FPR than other thresholds, are NOT discarded from ROC/AUC
+            computation. Discrading them requires evaluation w.r.t. ground truth
+            (oracle information), which is inaccessible in practical scenarios.
+            https://arxiv.org/abs/2406.04212
 
     Returns:
         tp_ratio (1d np.ndarray): True Positive Ratios
@@ -297,6 +318,7 @@ def _single_class_roc_from_intermediate_statistics(
                 alpha_ct=alpha_ct,
                 unit_of_time=unit_of_time,
                 max_efpr=max_efpr,
+                non_oracle=non_oracle,
             ) for cls, scores_stats in (
                 scores_intermediate_statistics.items())
         }
@@ -318,8 +340,9 @@ def _single_class_roc_from_intermediate_statistics(
         ]
         effective_fp_rate = fp_rate + alpha_ct * np.mean(ct_rates, axis=0)
     effective_fp_rate = effective_fp_rate * seconds_per_unit_of_time[unit_of_time]
-    return _unique_cummax_sort(
-        tp_ratio, effective_fp_rate, scores, max_efpr=max_efpr
+    return _sort_and_cut(
+        tp_ratio, effective_fp_rate, scores, max_efpr=max_efpr,
+        non_oracle=non_oracle,
     )
 
 
@@ -354,12 +377,13 @@ def multi_class_psd_roc_from_single_class_psd_rocs(single_class_psd_rocs, alpha_
     return effective_tp_rate, overall_effective_fp_rates
 
 
-def _unique_cummax_sort(tp_ratio, effective_fp_rate, *other, max_efpr=None):
+def _sort_and_cut(tp_ratio, effective_fp_rate, *other, max_efpr=None, non_oracle=False):
     # make cummax choose higher threshold when two ops have same fpr&tpr
     tp_ratio, effective_fp_rate, *other = [values[::-1] for values in [tp_ratio, effective_fp_rate, *other]]
     tp_ratio, effective_fp_rate, *other = xsort(tp_ratio, effective_fp_rate, *other)
-    cummax_indices = cummax(tp_ratio)[1]
-    tp_ratio, effective_fp_rate, *other = [values[cummax_indices] for values in [tp_ratio, effective_fp_rate, *other]]
+    if not non_oracle:
+        cummax_indices = cummax(tp_ratio)[1]
+        tp_ratio, effective_fp_rate, *other = [values[cummax_indices] for values in [tp_ratio, effective_fp_rate, *other]]
     effective_fp_rate, unique_efpr_indices = np.unique(
         effective_fp_rate[::-1], return_index=True)
     unique_efpr_indices = - 1 - unique_efpr_indices

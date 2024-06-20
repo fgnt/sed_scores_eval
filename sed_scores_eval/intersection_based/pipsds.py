@@ -5,7 +5,7 @@ from sed_scores_eval.base_modules.io import parse_inputs, parse_ground_truth, pa
 from sed_scores_eval.base_modules.bootstrap import bootstrap
 from sed_scores_eval.base_modules.postprocessing import medfilt
 from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas
-from sed_scores_eval.intersection_based.psds import _unique_cummax_sort, psd_roc, psds_from_psd_roc, multi_class_psd_roc_from_single_class_psd_rocs
+from sed_scores_eval.intersection_based.psds import _sort_and_cut, psd_roc, psds_from_psd_roc, multi_class_psd_roc_from_single_class_psd_rocs
 
 
 def psd_roc_postprocessing(
@@ -87,7 +87,7 @@ def merge_individual_rocs_into_overall_roc(rocs):
     tprs, efprs, scores, filter_lengths = [
         np.concatenate(values) for values in list(zip(*rocs))
     ]
-    return _unique_cummax_sort(tprs, efprs, scores, filter_lengths)
+    return _sort_and_cut(tprs, efprs, scores, filter_lengths)
 
 
 def postprocessing_independent_psd_roc_from_postprocessing_dependent_psd_rocs(single_class_psd_rocs, alpha_st, max_efpr):
