@@ -108,3 +108,26 @@ def auroc(
     return auroc_from_intermediate_statistics(
         intermediate_stats, max_fpr=max_fpr, mcclish_correction=mcclish_correction
     )
+
+
+def bootstrapped_auroc(
+        scores, ground_truth, audio_durations, *, deltas=None,
+        segment_length, max_fpr=None, time_decimals=6,
+        n_bootstrap_samples=100, num_jobs=1,
+):
+    if scores is not None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    return bootstrap(
+        auroc, scores=scores, deltas=deltas,
+        deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
+            audio_durations=audio_durations,
+            segment_length=segment_length,
+            time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            max_fpr=max_fpr,
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
+    )

@@ -1,5 +1,5 @@
 import numpy as np
-from collections import defaultdict
+from sed_scores_eval.base_modules.io import parse_ground_truth, parse_audio_durations
 from sed_scores_eval.utils import parallel
 
 
@@ -38,10 +38,10 @@ def bootstrap_from_deltas(
     data_orig = {'deltas': deltas}
     data_samples = {'deltas': []}
     if ground_truth is not None:
-        data_orig['ground_truth'] = ground_truth
+        data_orig['ground_truth'] = parse_ground_truth(ground_truth)
         data_samples['ground_truth'] = []
     if audio_durations is not None:
-        data_orig['audio_durations'] = audio_durations
+        data_orig['audio_durations'] = parse_audio_durations(audio_durations)
         data_samples['audio_durations'] = []
 
     audio_ids_repeated = n_bootstrap_samples * audio_ids
@@ -87,11 +87,11 @@ def confidence_interval(bootstrapped_outputs, confidence=.9, axis=None):
         }
         return mean_low_high
 
-    mean = np.mean(bootstrapped_outputs, axis=axis)
-    low = np.percentile(
+    mean = float(np.mean(bootstrapped_outputs, axis=axis))
+    low = float(np.percentile(
         bootstrapped_outputs, ((1 - confidence) / 2) * 100, axis=axis,
-    )
-    high = np.percentile(
+    ))
+    high = float(np.percentile(
         bootstrapped_outputs, (confidence + ((1 - confidence) / 2)) * 100, axis=axis,
-    )
+    ))
     return mean, low, high

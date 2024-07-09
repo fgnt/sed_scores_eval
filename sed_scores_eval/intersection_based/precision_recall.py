@@ -197,7 +197,8 @@ def bootstrapped_fscore(
     Returns:
 
     """
-    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    if scores is not None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
     return bootstrap(
         fscore, scores=scores, deltas=deltas,
         deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
@@ -273,4 +274,42 @@ def best_fscore(
     return best_fscore_from_intermediate_statistics(
         intermediate_stats, beta=beta,
         min_precision=min_precision, min_recall=min_recall,
+    )
+
+
+def bootstrapped_best_fscore(
+        scores, ground_truth, *, deltas=None,
+        dtc_threshold, gtc_threshold, beta=1., time_decimals=6,
+        n_bootstrap_samples=100, num_jobs=1,
+):
+    """
+
+    Args:
+        scores:
+        ground_truth:
+        deltas:
+        dtc_threshold:
+        gtc_threshold:
+        beta:
+        time_decimals:
+        n_bootstrap_samples:
+        num_jobs:
+
+    Returns:
+
+    """
+    if scores is not None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    return bootstrap(
+        best_fscore, scores=scores, deltas=deltas,
+        deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
+        deltas_fn_kwargs=dict(
+            ground_truth=ground_truth,
+            dtc_threshold=dtc_threshold, gtc_threshold=gtc_threshold,
+            time_decimals=time_decimals,
+        ),
+        eval_fn_kwargs=dict(
+            beta=beta,
+        ),
+        n_bootstrap_samples=n_bootstrap_samples,
     )

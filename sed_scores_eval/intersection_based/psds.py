@@ -1,10 +1,9 @@
 import numpy as np
 from scipy.interpolate import interp1d
-from sed_scores_eval.base_modules.io import parse_inputs
+from sed_scores_eval.base_modules.io import parse_inputs, parse_audio_durations, parse_ground_truth
 from sed_scores_eval.utils.array_ops import cummax, get_first_index_where
 from sed_scores_eval.base_modules.curves import xsort, staircase_auc
 from sed_scores_eval.base_modules.bootstrap import bootstrap
-from sed_scores_eval.base_modules.io import parse_audio_durations
 from sed_scores_eval.intersection_based.intermediate_statistics import intermediate_statistics_deltas, accumulated_intermediate_statistics
 
 seconds_per_unit_of_time = {
@@ -243,7 +242,8 @@ def bootstrapped_psds(
     Returns:
 
     """
-    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    if scores is not None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
     return bootstrap(
         psds, scores=scores, deltas=deltas,
         deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
@@ -253,7 +253,7 @@ def bootstrapped_psds(
             cttc_threshold=cttc_threshold, time_decimals=time_decimals,
         ),
         eval_fn_kwargs=dict(
-            audio_durations=audio_durations,alpha_ct=alpha_ct,
+            audio_durations=audio_durations, alpha_ct=alpha_ct,
             alpha_st=alpha_st, unit_of_time=unit_of_time, max_efpr=max_efpr,
             non_oracle=non_oracle,
         ),

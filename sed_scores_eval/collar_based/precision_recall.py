@@ -1,4 +1,3 @@
-import numpy as np
 from sed_scores_eval.base_modules.io import parse_inputs
 from sed_scores_eval.base_modules.bootstrap import bootstrap
 from sed_scores_eval.base_modules.precision_recall import (
@@ -226,7 +225,8 @@ def bootstrapped_fscore(
     Returns:
 
     """
-    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    if scores is not None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
     return bootstrap(
         fscore, scores=scores, deltas=deltas,
         deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
@@ -314,11 +314,10 @@ def best_fscore(
     )
 
 
-def bootstrapped_fscore_curve(
+def bootstrapped_best_fscore(
         scores, ground_truth, *, deltas=None,
-        onset_collar, offset_collar, offset_collar_rate=0.,
-        beta=1., time_decimals=6,
-        n_bootstrap_samples=100, num_jobs=1,
+        onset_collar, offset_collar, offset_collar_rate=0., beta=1.,
+        time_decimals=6, n_bootstrap_samples=100, num_jobs=1,
 ):
     """
 
@@ -337,9 +336,10 @@ def bootstrapped_fscore_curve(
     Returns:
 
     """
-    scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
+    if scores is not None:
+        scores, ground_truth, audio_ids = parse_inputs(scores, ground_truth)
     return bootstrap(
-        fscore_curve, scores=scores, deltas=deltas,
+        best_fscore, scores=scores, deltas=deltas,
         deltas_fn=intermediate_statistics_deltas, num_jobs=num_jobs,
         deltas_fn_kwargs=dict(
             ground_truth=ground_truth,
@@ -352,11 +352,3 @@ def bootstrapped_fscore_curve(
         ),
         n_bootstrap_samples=n_bootstrap_samples,
     )
-
-
-def _recursive_get_item(stats, idx):
-    if isinstance(stats, dict):
-        return {key: _recursive_get_item(stats[key], idx) for key in stats}
-    if np.isscalar(stats):
-        return stats
-    return stats[idx]

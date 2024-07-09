@@ -102,13 +102,13 @@ def validate_score_dataframe(scores, timestamps=None, event_classes=None):
         )
     onset_times = scores['onset'].to_numpy()
     offset_times = scores['offset'].to_numpy()
+    timestamps_from_df = np.concatenate((onset_times, offset_times[-1:]))
     if (offset_times == onset_times).any():
-        raise ValueError('Some frames have zero length.')
+        raise ValueError(f'Some frames have zero length: {timestamps_from_df}')
     if not (offset_times[:-1] == onset_times[1:]).all():
         raise ValueError(
             f'onset times must match offset times of the previous frame.'
         )
-    timestamps_from_df = np.concatenate((onset_times, offset_times[-1:]))
     if timestamps is not None and not np.allclose(timestamps_from_df, timestamps):
         raise ValueError(
             f'timestamps from file {timestamps_from_df} do not match provided timestamps {timestamps}.'
