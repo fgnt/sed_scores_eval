@@ -60,7 +60,7 @@ def roc_curve_from_intermediate_statistics(scores_intermediate_statistics):
     return xsort(tpr, fpr, scores, stats)
 
 
-def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=None):
+def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=None, mcclish_correction=False):
     """compute area under ROC curve
 
     Args:
@@ -73,6 +73,8 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=N
             If dict input is provided keys are expected to be class names with
             corresponding scores/intermediate_statistics as values.
         max_fpr (float): maximum false positive rate up to which to compute partial auc
+        mcclish_correction: whether to use mcclish correction to get result back
+            into [0.5,1.] range when using max_fpr.
 
     Returns:
         auroc ((dict of) float): mean and class-wise area under ROC curve
@@ -84,7 +86,7 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=N
         auroc, roc_curves = {}, {}
         for class_name, scores_stats in scores_intermediate_statistics.items():
             auroc[class_name], roc_curves[class_name] = auroc_from_intermediate_statistics(
-                scores_stats, max_fpr=max_fpr,
+                scores_stats, max_fpr=max_fpr, mcclish_correction=mcclish_correction,
             )
         auroc['mean'] = np.mean([auroc[class_name] for class_name in auroc])
         return auroc, roc_curves
@@ -92,6 +94,12 @@ def auroc_from_intermediate_statistics(scores_intermediate_statistics, max_fpr=N
         scores_intermediate_statistics
     )
     tpr, fpr, *_ = roc_curve
-    norm = 1 if max_fpr is None else max_fpr
-    auroc = linear_auc(tpr, fpr, max_x=max_fpr)/norm
+    auroc = linear_auc(tpr, fpr, max_x=max_fpr)
+    if max_fpr is not None and mcclish_correction:
+        min_area = 0.5 * max_fpr ** 2
+        max_area = max_fpr
+        auroc = 0.5 * (1 + (auroc - min_area) / (max_area - min_area))
+    else:
+        norm = 1 if max_fpr is None else max_fpr
+        auroc = auroc/norm
     return auroc, roc_curve

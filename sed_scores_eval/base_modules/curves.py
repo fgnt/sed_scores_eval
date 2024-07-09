@@ -30,6 +30,7 @@ def staircase_auc(y, x, max_x=None):
         y = y[:-1]
     else:
         cutoff_idx = get_first_index_where(x, "gt", max_x)
+        assert cutoff_idx > 0, cutoff_idx
         x = np.concatenate((x[:cutoff_idx], [max_x]))
         y = y[:cutoff_idx]
     widths = x[1:] - x[:-1]
@@ -51,19 +52,27 @@ def linear_auc(y, x, max_x=None):
         auc: AUC value
 
     >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,2.,3.]))
-    3.0
+    4.5
     >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,1.1,1.2]))
-    0.2999999999999998
+    0.8999999999999998
     >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,2.,3.]), max_x=2.5)
-    2.0
-    >>> linear_auc(np.array([0.,1.,2.,3.]), np.array([0.,1.,2.,3.]), max_x=10.)
-    24.0
+    3.125
     """
     sort_idx = np.argsort(x)
     x = x[sort_idx]
     y = y[sort_idx]
+    if max_x is not None:
+        cutoff_idx = get_first_index_where(x, "gt", max_x)
+        assert cutoff_idx > 0, (cutoff_idx, x[0], max_x)
+        assert cutoff_idx < len(x), (len(x), cutoff_idx, x[-1], max_x)
+        if x[cutoff_idx] <= x[cutoff_idx-1]:
+            y_last = y[cutoff_idx]
+        else:
+            y_last = y[cutoff_idx-1] + (max_x - x[cutoff_idx-1])/(x[cutoff_idx] - x[cutoff_idx-1])*(y[cutoff_idx]-y[cutoff_idx-1])
+        x = np.concatenate((x[:cutoff_idx], [max_x]))
+        y = np.concatenate((y[:cutoff_idx], [y_last]))
     y = (y + np.concatenate((y[1:], [y[-1]]))) / 2
-    return staircase_auc(y, x, max_x=max_x)
+    return staircase_auc(y, x)
 
 
 def get_curve_idx_for_threshold(scores, threshold):

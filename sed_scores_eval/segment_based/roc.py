@@ -2,7 +2,10 @@ from sed_scores_eval.base_modules.roc import (
     roc_curve_from_intermediate_statistics,
     auroc_from_intermediate_statistics
 )
-from sed_scores_eval.segment_based.intermediate_statistics import accumulated_intermediate_statistics
+from sed_scores_eval.base_modules.io import parse_inputs
+from sed_scores_eval.base_modules.bootstrap import bootstrap
+from sed_scores_eval.segment_based.intermediate_statistics import (
+    accumulated_intermediate_statistics, intermediate_statistics_deltas)
 
 
 def roc_curve(
@@ -58,7 +61,8 @@ def roc_curve(
 
 def auroc(
         scores, ground_truth, audio_durations, *, deltas=None,
-        segment_length, max_fpr=None, time_decimals=6, num_jobs=1,
+        segment_length, max_fpr=None, mcclish_correction=False,
+        time_decimals=6, num_jobs=1,
 ):
     """compute area under ROC curve
 
@@ -79,6 +83,8 @@ def auroc(
         segment_length: the segment length of the segments that are to be
             evaluated.
         max_fpr (float): maximum false positive rate up to which to compute partial auc
+        mcclish_correction: whether to use mcclish correction to get result back
+            into [0.5,1.] range when using max_fpr.
         time_decimals (int): the decimal precision used for evaluation. If
             chosen to high detected or ground truth events that have
             onsets or offsets right on a segment boundary may swap over to the
@@ -99,4 +105,6 @@ def auroc(
         segment_length=segment_length, time_decimals=time_decimals,
         num_jobs=num_jobs,
     )
-    return auroc_from_intermediate_statistics(intermediate_stats, max_fpr=max_fpr)
+    return auroc_from_intermediate_statistics(
+        intermediate_stats, max_fpr=max_fpr, mcclish_correction=mcclish_correction
+    )
