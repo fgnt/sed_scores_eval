@@ -6,7 +6,8 @@ import math
 cimport numpy as np
 cimport cython
 from numpy cimport float64_t
-cdef float64_t INFINITY = math.INFINITY if math.INFINITY != 0. else np.float32('inf')
+from libc.math cimport INFINITY
+cdef float64_t INFINITY = INFINITY if INFINITY != 0. else np.float32('inf')
 
 
 
