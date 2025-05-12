@@ -7,7 +7,7 @@ cimport numpy as np
 cimport cython
 from numpy cimport float64_t
 from libc.math cimport INFINITY
-cdef float64_t INFINITY = INFINITY if INFINITY != 0. else np.float32('inf')
+cdef float64_t INF = INFINITY if INFINITY != 0. else np.float32('inf')
 
 
 
@@ -92,12 +92,12 @@ def onset_offset_curves(scores_in, timestamps_in, change_point_candidates_in=Non
         is_on = False
         for t in range(num_segments):
             if is_on:
-                if scores[t] < threshold or scores[t] == -INFINITY:
+                if scores[t] < threshold or scores[t] == -INF:
                     offset_times[i, event_idx] = timestamps[t]
                     event_idx += 1
                     is_on = False
             else:
-                if scores[t] >= threshold and scores[t] > -INFINITY:
+                if scores[t] >= threshold and scores[t] > -INF:
                     onset_times[i, event_idx] = timestamps[t]
                     is_on = True
         if is_on:

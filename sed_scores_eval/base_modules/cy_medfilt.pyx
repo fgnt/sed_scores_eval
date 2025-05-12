@@ -5,6 +5,11 @@ import numpy as np
 cimport numpy as np
 cimport cython
 from libcpp.vector cimport vector
+from libc.math cimport INFINITY
+from numpy cimport float64_t
+
+cdef float64_t NEG_INFINITY = -INFINITY
+cdef float64_t POS_INFINITY = INFINITY
 
 cdef int searchsorted(double [:] sorted_list, double value, int init_idx):
     """Search position in a sorted list where value should be inserted.
@@ -85,11 +90,11 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
     cdef int num_classes = scores_in.shape[1]
     cdef int num_breakpoints = overlap_breakpoint_timestamps.shape[1]
     cdef double [:,:] scores = np.concatenate((
-        np.full_like(scores_in[:1], -np.inf),
+        np.full_like(scores_in[:1], NEG_INFINITY),
         scores_in,
-        np.full_like(scores_in[:1], -np.inf),
+        np.full_like(scores_in[:1], NEG_INFINITY),
     ))
-    cdef double [:] timestamps = np.concatenate(([-np.inf], timestamps_in, [np.inf]))
+    cdef double [:] timestamps = np.concatenate(([NEG_INFINITY], timestamps_in, [POS_INFINITY]))
     cdef double eps = 10**(-time_decimals-1)
 
     cdef:
@@ -109,7 +114,7 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
     cdef int relevant_segments_offset = 1
     cdef int num_relevant_segments = 1
     cdef int [:] ranking_indices = np.zeros(num_segments, dtype=np.int32)
-    cdef double current_median_score = -np.inf
+    cdef double current_median_score = NEG_INFINITY
     cdef double current_median_score_range_low = 0
     cdef double current_median_score_range_up
     cdef double [:] scores_k
@@ -126,14 +131,14 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
                 change_point_class_labels.push_back(k)
                 change_point_class_scores.push_back(scores_k[i])
             continue
-        current_median_score = -np.inf
+        current_median_score = NEG_INFINITY
         current_median_score_range_low = 0
         current_median_score_range_up = filter_length_k
         overlap_breakpoint_timestamps_k = overlap_breakpoint_timestamps[k]
         relevant_segments_onset = 0
         relevant_segments_offset = 1
         num_relevant_segments = 1
-        relevant_scores[0] = -np.inf
+        relevant_scores[0] = NEG_INFINITY
         relevant_overlaps[0] = filter_length_k
         for i in range(1, num_breakpoints):
             t = overlap_breakpoint_timestamps_k[i]  # current breakpoint
@@ -254,8 +259,8 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
     change_point_class_scores_sorted = np.asarray(change_point_class_scores)[sort_idx]
     scores_filtered = []
     timestamps_filtered = []
-    current_timestamp = -np.inf
-    current_score_vec = scores.shape[1]*[-np.inf]
+    current_timestamp = NEG_INFINITY
+    current_score_vec = scores.shape[1]*[NEG_INFINITY]
     for i, t in enumerate(change_point_timestamps_sorted):
         if t > (current_timestamp + eps):
             timestamps_filtered.append(t)
@@ -265,5 +270,5 @@ def cy_medfilt(scores_in, timestamps_in, filter_length_in_sec=None, time_decimal
         current_score_vec[change_point_class_labels_sorted[i]] = change_point_class_scores_sorted[i]
 
     if len(scores_filtered) == 0:
-        return np.full(scores_in.shape[1], -np.inf)[None], timestamps_in[[0,-1]]
+        return np.full(scores_in.shape[1], NEG_INFINITY)[None], timestamps_in[[0,-1]]
     return np.array(scores_filtered)[1:], np.round(np.array(timestamps_filtered)+eps, time_decimals)
