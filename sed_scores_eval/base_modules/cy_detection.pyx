@@ -2,9 +2,12 @@
 #cython: language_level=3
 
 import numpy as np
+import math
 cimport numpy as np
 cimport cython
-from numpy.math cimport INFINITY
+from numpy cimport float64_t
+cdef float64_t INFINITY = math.INFINITY if math.INFINITY != 0. else np.float32('inf')
+
 
 
 def onset_offset_curves(scores_in, timestamps_in, change_point_candidates_in=None):
