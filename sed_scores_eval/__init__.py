@@ -1,6 +1,6 @@
 from pathlib import Path
 from . import base_modules
-from .base_modules import io
+from .base_modules import io, scores
 from . import intersection_based
 from . import collar_based
 from . import segment_based

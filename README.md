@@ -134,7 +134,7 @@ provide a dict of pandas.DataFrames of above format, where dict keys must be
 the file ids (e.g. "test1").
 Score dataframes can be obtained from score arrays analogously to above by
 ```python
-scores["test1"] = sed_scores_eval.base_modules.scores.create_score_dataframe(
+scores["test1"] = sed_scores_eval.scores.create_score_dataframe(
     scores_arr, timestamps=timestamps, event_classes=event_classes
 )
 ```
