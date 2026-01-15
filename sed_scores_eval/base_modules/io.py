@@ -527,7 +527,7 @@ def download_test_data():
     print('Download test data')
     zip_file_path = tests_dir_path / 'data.zip'
     urlretrieve(
-        'https://go.upb.de/sed_scores_eval_test_data',
+        'https://zenodo.org/records/18234055/files/data.zip?download=1',
         filename=str(zip_file_path)
     )
     with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
