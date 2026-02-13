@@ -216,6 +216,8 @@ def _worker(
         timestamps, _ = validate_score_dataframe(
             scores_for_key, event_classes=event_classes)
         scores_for_key = scores_for_key[event_classes].to_numpy()
+        if not scores_for_key.flags.writeable:
+            scores_for_key = scores_for_key.copy()
         deltas[audio_id] = {}
         gt_onset_times = {}
         gt_offset_times = {}
